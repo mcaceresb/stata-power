@@ -65,3 +65,8 @@ TODO
 - [ ] Add documentation for `simci`
 - [ ] Add documentation for `power_reg`
 - [ ] Add examples for `power_reg`
+
+License
+-------
+
+[MIT](https://github.com/mcaceresb/stata-power/blob/master/LICENSE)
