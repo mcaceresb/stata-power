@@ -1,0 +1,106 @@
+% ---------------------------------------------------------------------
+\documentclass{article}
+
+\usepackage{nberpreamble}
+\usepackage{tikz}
+\usetikzlibrary{
+  arrows,
+  patterns,
+  positioning,
+  calc,
+  fit,
+  intersections,
+  decorations.text,
+  decorations.markings,
+  decorations.pathmorphing,
+  shadows.blur
+}
+
+\title{\bfseries Notes on Parametric Power \\ for Clustered Randomization}
+\author{\sffamily Prepared by Mauricio C\'aceres}
+\date{\sffamily \today}
+
+\renewcommand{\displayoptions}{
+  \maketitle
+  \pagenumbering{arabic}
+}
+
+% ---------------------------------------------------------------------
+\begin{document}
+\displayoptions
+
+%----------------------------------------------------------------------
+\section{MDE and Sample Size with a Cluster Design}
+\label{sec:mde_and_sample_size_with_a_cluster_design}
+
+Recall \Cref{eq:cluster_reg}; without controls we have
+\begin{equation}
+\label{eq:cluster_reg}
+Y_{ij} = \alpha + \beta T_j + \varepsilon_{ij},
+\end{equation}
+
+with $E (\varepsilon_{ij} \varepsilon_{i^\prime j}) \ne 0$ and the randomization $T_j$ at the cluster level ($j = 1, \ldots, J$ clusters and $n_j$ individuals per cluster, $\sum^{J}_{j = 1} n_j = N$). Following \citet[p. 3921-2]{DufloGlennersterKremer2007}, suppose we can additively decompose the error term $\varepsilon_{ij}$ as
+\begin{equation}
+\label{eq:cluster_reg_additive}
+Y_{ij} = \alpha + \beta T_j + v_j + u_{ij},
+\end{equation}
+
+with $v_j \stackrel{iid}{\sim} (0, \sigma_v^2), u_{ij} \stackrel{iid}{\sim} (0, \sigma_u^2)$. \citeauthor{DufloGlennersterKremer2007} provide a formula for the case when we have equal cluster sizes, but not the case when cluster sizes vary. Let us further assume $n_j \stackrel{iid}{\sim} (\mu_n, \sigma^2_n)$ and $\rho \equiv \sigma_v^2 / \sigma_\varepsilon^2$ so that $E (\varepsilon_{ij} \varepsilon_{i^\prime j}) = \rho \sigma_\varepsilon^2$. For significance level $\alpha$, power $\kappa$, and proportion randomized $P$ we have
+\begin{equation}
+  \begin{array}{rl}
+    J   & = \left(\dfrac{t_{1 - \kappa} + t_{\alpha / 2}}{MDE}\right)^2 \dfrac{DE \cdot \sigma_\varepsilon^2}{\mu_n P(1 - P)}
+          = N_0 \dfrac{DE}{\mu_n} \\[9pt]
+    MDE & = \Fabs{t_{1 - \kappa} + t_{\alpha / 2}} \sqrt{\dfrac{DE \cdot \sigma_\varepsilon^2}{J \mu_n P(1 - P)}}
+          = MDE_0 \cdot \sqrt{DE},
+  \end{array}
+\end{equation}
+
+where $MDE_0, N_0$ are the MDE and sample size required if the model used individual data and $DE$ is the so-called design effect (DE) or variance inflation factor (VIF):
+\begin{equation}
+  DE =
+  \begin{cases}
+    1 + \rho (\mu_n - 1) & \sigma^2_n = 0 \\
+    1 + \rho ((\sigma^2_n / \mu_n^2 + 1) \mu_n - 1) & \sigma^2_n > 0
+  \end{cases}.
+\end{equation}
+
+The formulas above are a slight modification of equations (1) and (3) in \citet{manatunga_sample_2001} to account for the case when the proportion randomized $P \ne 0.5$. Note we're leveraging the fact that testing the significance of $\widehat{\beta}_{OLS}$ is equivalent to a paired $t$-test in this case. If $Y_{ij}$ is also binary then we need to adjust the variance. Equation (3) in \citet{kong_sample_2003} gives
+\begin{equation}
+J = \left(\dfrac{t_{1 - \kappa} + t_{\alpha / 2}}{MDE}\right)^2 \dfrac{DE}{\mu_n P(1 - P)}
+    \Big(\mu_T (1 - \mu_T) (1 - P) + \mu_C (1 - \mu_C) P\Big).
+\end{equation}
+
+Again, we modify the formula slightly so we account for $P \ne 0.5$. Note that the variance of $\widehat{\beta}_{OLS}$ is
+\begin{equation}
+\begin{array}{rl}
+    V_{\widehat{\beta}} & = \widehat{V}_T + \widehat{V}_C \\
+    V_{k} & = \dfrac{\sum^{J}_{j = 1} n_{ik} \left(1 + (n_{jk} - 1) \rho\right)}{\left(\sum^{J}_{j = 1} n_{jk}\right)^2} \sigma^2_{\varepsilon}
+        \quad\quad k = T, C.
+  \end{array}
+\end{equation}
+
+$J V_{\widehat{\beta}} \xrightarrow{P} \sigma^2_{\varepsilon} DE / \mu_n$ as $J \to \infty$, meaning we can estimate $DE$ if the cluster sizes are known, given an estimate of $\rho$. \citeauthor{kong_sample_2003} suggests using an ANOVA-based estimate. Intuitively, from \cref{eq:cluster_reg_additive} we see that a random effects model $Y_{ij} = \alpha + v_j + u_{ij}$ is the true model under the null of $H_0: \beta = 0$; then $\rho = \sigma_v^2 / (\sigma_u^2 + \sigma_v^2)$.
+
+%----------------------------------------------------------------------
+\section{The Effect of Covariates}
+\label{sec:the_effect_of_covariates}
+
+Adding controls has the effect of absorbing some of the variation in the error terms, thereby reducing $\sigma_\varepsilon^2$ and $\rho$ and improving the precision of our estimates. The proportion of the unexplained variation absorbed by the covariates will be $R^2$, meaning we can adjust our parametric estimates to account for covariates by multiplying the variance by $1 - R^2$.
+
+For the intra-cluster correlation $\rho$ there is no trivial way of accounting for an arbitrary number of covariates---however, it is possible to make a simple adjustment for any one covariate. We follow the approach outlined in \citet{stanish_estimation_1983} and adjust the ANOVA-based estimate for $\rho$ to account for the lag of the outcome variable. Taking $MSB$ and $MSW$ as they are usually defined, we have
+\begin{align*}
+  n & = \dfrac{1}{J - 1} \left[N - \sum^{}_{j} n_j^2 / N \right] \\
+  k & = \dfrac{1}{J - 1} \left[\dfrac{\sum^{}_{j} n_j^2 (\overline{x}_j - \overline{x})^2}{\sum^{}_{j} \sum^{}_{i} (x_{ij} - \overline{x})^2}\right] \\
+  \widehat{\rho} & = \dfrac{MSB - MSW}{MSB + (n - k - 1) MSW},
+\end{align*}
+
+where the unadjusted $\widehat{\rho}$ would simply use $k = 0$.
+
+%----------------------------------------------------------------------
+% \clearpage
+
+\bibliographystyle{apalike}
+\bibliography{power.bib}
+
+%----------------------------------------------------------------------
+\end{document}
