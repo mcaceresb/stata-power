@@ -77,6 +77,11 @@ simci `depvar' `controls', reps(1000) strata(`stratum') nstrata(2) ///
 
 * Simulate a CI using C plugin (only tested under Linux)
 simci `depvar' `controls', reps(1000) fast
+
+* You can check it's actually faster
+net install benchmark, from(https://raw.githubusercontent.com/mcaceresb/benchmark/master/)
+benchmark, disp reps(10): qui simci `depvar' `controls', reps(1000)
+benchmark, disp reps(10): qui simci `depvar' `controls', reps(1000) fast
 ```
 
 Compiling
