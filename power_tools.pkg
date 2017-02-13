@@ -1,8 +1,14 @@
-v 0.1
-d Various tools and notes for power analysis
-d Mauricio Caceres Bravo, mauricio.caceres.bravo@gmail.com
+v 0.2
 d
-d Support: email mauricio.caceres.bravo at gmail dot com
+d 'POWER_TOOLS': Misc power tools.
+d
+d Various tools and notes for power analysis
+d
+d Distribution-Date: 20170212
+d
+d Author: Mauricio Caceres Bravo
+d Support: mauricio.caceres.bravo@gmail.com
+d
 f power_reg.ado
 f simci.ado
 f psimci.plugin
