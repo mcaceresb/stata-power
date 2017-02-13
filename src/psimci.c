@@ -140,7 +140,7 @@ STDLL stata_call(int argc, char *argv[])
     // Parallelize ALL THE THINGS!
     // ---------------------------
 
-    sprintf(pbuf, "Parallelizing simulation. %d threads found.",
+    sprintf(pbuf, "Parallelizing simulation. %d threads found.\n",
             omp_get_num_threads());
     SF_display(pbuf);
 
