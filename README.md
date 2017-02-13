@@ -3,12 +3,12 @@ Description
 
 Various notes and Stata programs to aid in power analysis.
 
-I write the notes mainly to explain to myself how to write `power_reg` and `simci`. The former can compute parametric power with clustering and stratification. The latter can simulate it. I wrote them mainly because I could not figure out how to do either for the simple (OLS) case with built-in Stata commands.
+I write the notes mainly to explain to myself how to write `power_reg` and `simci`. The former can compute [parametric power with clustering and stratification](https://github.com/mcaceresb/stata-power/blob/master/notes/power-clustered-notes.pdf). The latter can [simulate it](https://github.com/mcaceresb/stata-power/blob/master/notes/power-simulation-notes.pdf). I wrote them mainly because I could not figure out how to do either for the simple (OLS) case with built-in Stata commands.
 
 Requirements
 ------------
 
-I only have access to Stata 13.1, so I impose that to be the minimum. The command is really simple, however, so I would not be surprised if it worked with earlier versions.
+I only have access to Stata 13.1, so I impose that to be the minimum. The command is really simple, however, so I would not be surprised if it worked with earlier versions. The exception would be the `fast` option, which was compiled using C and v2.0 of the Stata Plugin Interface (SPI). This might be tied to Stata 13.1. See how to recompile below.
 
 Installation
 ------------
@@ -17,11 +17,36 @@ Installation
 net install power_tools, from(https://raw.githubusercontent.com/mcaceresb/stata-power/master/)
 ```
 
+Compiling
+---------
+
+The `fast` option uses a Stata plugin (compiled in C). To compile in Linux/Unix:
+```bash
+git clone https://github.com/mcaceresb/stata-power
+cd stata-power
+make SPI=3.0 # SPI v3.0, Stata 14 and later
+make SPI=2.0 # SPI v2.0, Stata 13 and earlier
+```
+
+Dependencies
+- GSL
+- OpenMP
+- Stata plugin interface
+
+I have only tested this in Linux so far. See [Stata's plugin documentation](http://www.stata.com/plugins/) for instructions on how to build the plugin in other platforms.
+
 Examples
 ---------
 
 ```stata
 sysuse auto, clear
+tempfile auto
+save `auto'
+qui forvalues i = 1 / 20 {
+    append using `auto'
+}
+replace price = price + runiform()
+
 local depvar      price
 local controls    mpg rep78
 local cluster     rep78
@@ -35,6 +60,7 @@ power_reg `depvar' `controls', cluster(`cluster') strata(`stratum') nstrata(2)
 
 * Simulate a CI
 simci `depvar' `controls', reps(1000)
+simci `depvar' `controls', reps(1000) fast
 simci `depvar' `controls', reps(1000) cluster(`cluster')
 simci `depvar' `controls' `stratum', reps(1000) cluster(`cluster') ///
     strata(`stratum') nstrata(2)
@@ -65,6 +91,9 @@ TODO
 - [ ] Add documentation for `simci`
 - [ ] Add documentation for `power_reg`
 - [ ] Add examples for `power_reg`
+- [ ] Compile `fast` option for Windows and OSX.
+- [ ] Finish writing `fast` plugin so it works for clustering and stratification.
+- [ ] Finish writing `fast` plugin so it works with `effect()` and `power()`.
 
 License
 -------

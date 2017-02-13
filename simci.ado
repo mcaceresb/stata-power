@@ -1,4 +1,4 @@
-*! version 0.5 19Oct016 Mauricio Caceres, caceres@nber.org
+*! version 0.6 11Feb2017 Mauricio Caceres, caceres@nber.org
 *! Simulated CI, MDE, and power for regression specification (accepts
 *! clusters and arbitrary number of stratifying/blocking variables)
 
@@ -51,6 +51,8 @@ program simci, rclass sortpreserve
                                   ///   the variable's categories.
         effect(str)               /// Induce artificial effect
         power(str)                /// Search for power
+                                  /// 
+        fast                      /// Use C plugin for speed
 	]
     local savelist `varlist'
 
@@ -204,7 +206,7 @@ program simci, rclass sortpreserve
 
         if `:list sizeof strata' != `:list sizeof nstrata' {
             di as err "{p}specify # of strata for each stratifying variable{p_end}"
-            exit
+            exit 198
         }
 
         local nstrata2 ""
@@ -215,7 +217,7 @@ program simci, rclass sortpreserve
             if (`ns' < 2) & (`ns' != 0) {
                 di as err "{p}asked for `ns' strata for `sv'" ///
                           "; specify n > 1 or 0{p_end}"
-                exit
+                exit 198
             }
             if (`ns' == 0) {
                 if ("`cluster'" != "") {
@@ -230,6 +232,18 @@ program simci, rclass sortpreserve
         local st  = `:di subinstr("`nstrata2'", " ", "*", .)'
     }
     else local st = 1
+
+    * 'fast' only works for the simple case at the moment
+    local complicated = ("`strata'" != "") | ("`cluster'" != "")
+    if ("`fast'" != "") & `complicated' {
+        di as err "'fast' not yet available with stratification or clustering."
+        exit 198
+    }
+
+    if ("`fast'" != "") & ("`compute'" != "ci") {
+        di as err "'fast' not yet available with -effect()- or -power()-."
+        exit 198
+    }
 
     * Set up randomization for Mata
     * -----------------------------
@@ -391,7 +405,38 @@ program simci, rclass sortpreserve
     else if ("`binary'" != "") local binary _binary
 
     tempname results output
-    if ("`compute'" == "ci") | ("`compute'" == "effect") {
+    if ("`fast'" != "") {
+        * Run using C plug-in; fastest
+        preserve
+        qui {
+            keep if `touse'
+            keep  `depvar' `controls'
+            order `depvar' `controls'
+
+            * Data sharing with C is a bit primitive, so we store the
+            * results in newly created variables mu and beta
+            tempvar beta mu
+            local out `beta' `mu'
+            gen `beta' = .
+            gen `mu'   = .
+
+            * If the number of repetitions is higher, we need to expand
+            * the data set
+            local nonmiss = `=_N'
+            set obs `:di max(`reps', `nonmiss')'
+        }
+
+            * Run the simulation
+            local psimci plugin call psimci
+            `psimci' `depvar' `controls' `out' in 1 / `nonmiss', `ptreat' `reps'
+            qui replace `mu' = `mu' / `:di scalar(ntreat)'
+            qui drop if mi(`beta')
+            mata: `results' = st_data(., "`out'"), J(`reps', 1, 0)
+            mata: `output'  = parse_simci(`results', `alpha', `nt')
+        restore
+    }
+    else if ("`compute'" == "ci") | ("`compute'" == "effect") {
+        * Run the CI simulation using Stata
         mata: `results' = simci`binary'(st_local("depvar"),   /// depvar
                                         st_local("controls"), /// controls
                                         st_local("touse"),    /// touse
@@ -399,6 +444,8 @@ program simci, rclass sortpreserve
                                         `reps',               /// reps
                                         `effect',             /// effect
                                         `shufflefun')         //  shuffle
+
+        * Find power given bounds if effect requested (auto or provided)
         if ("`bounds'" == "") {
             mata: `output' = parse_simci(`results', `alpha', `nt')
         }
@@ -421,6 +468,7 @@ program simci, rclass sortpreserve
         }
     }
     else if ("`compute'" == "power") {
+        * Find MDE given power level
         mata: `results' = power_search(st_local("depvar"),    /// depvar
                                        st_local("controls"),  /// controls
                                        st_local("touse"),     /// touse
@@ -500,33 +548,66 @@ program simci, rclass sortpreserve
     di ""
 end
 
+capture program drop psimci
+program psimci, plugin using("psimci.plugin")
+
 ***********************************************************************
 *                           Mata functions                            *
 ***********************************************************************
-
-mata:
 
 // Simulate CI
 // -----------
 
 // Speed considerations:
+//
 //   - Randomization, regression, _and_ loop in pure Stata: Very slow.
 //     Unless you want to give up precision you'll need to sort by a
 //     random variable at least once per loop (or maybe crazy I/O if you
 //     pre-generate all the treatment indicators and merge at each run).
 //     Then AFAIK there's no way to compute just the OLS parameters in
 //     Stata (it always computes the standard errors, etc.)
+//
 //   - Randomization in Mata, regression and loop in Stata: Slow. Mata
 //     can shuffle the indicator and you can use `getmata` to put it in
 //     memory. This saves you the sorting and the merging, but `getmata`
 //     is not fast and `reg` is still a problem.
-//   - Randomization and regression in Mata, loop in Stata: Fast. Mata
+//
+//   - Randomization and regression in Mata, loop in Stata: Faster. Mata
 //     can shuffle the indicator, which is faster than sort and merge,
 //     and then run just the OLS matrix algebra.
-//   - Randomization, regression, and loop in Mata: Fastest. While the
+//
+//   - Randomization, regression, and loop in Mata: Faster. While the
 //     speed improvements from the prior step are marginal, the loop in
 //     pure Mata does run faster than the Stata loop doing Mata matrix
 //     algebra at each turn.
+//
+//   - Randomization, regression, and loop in C: Fastest. MATA cannot
+//     compete with C, which is is a compiled language and can also
+//     execute the loop in parallel
+
+mata:
+
+void function psimci_plugin(string scalar depvar,
+                            string scalar controls,
+                            string scalar touse,
+                            real scalar reps)
+{
+    y = X = .
+    st_view(y, ., depvar,   touse)
+    st_view(X, ., controls, touse)
+    stata("preserve")
+    stata("clear")
+    stata("getmata ")
+    results = J(reps, 3, 0)
+    for (r = 1; r <= reps; r++) {
+        st = (*shuffle)(treat)
+        mu = mean(y[selectindex(!st)])
+        XX = (st, X)
+        b  = invsym(cross(XX, 1, XX, 1)) * cross(XX, 1, y, 0)
+        results[r, 1::2] = b[1], mu
+    }
+    return(results)
+}
 
 real matrix function simci(string scalar depvar,
                            string scalar controls,
