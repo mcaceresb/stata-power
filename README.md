@@ -17,24 +17,6 @@ Installation
 net install power_tools, from(https://raw.githubusercontent.com/mcaceresb/stata-power/master/)
 ```
 
-Compiling
----------
-
-The `fast` option uses a Stata plugin (compiled in C). To compile in Linux/Unix:
-```bash
-git clone https://github.com/mcaceresb/stata-power
-cd stata-power
-make SPI=3.0 # SPI v3.0, Stata 14 and later
-make SPI=2.0 # SPI v2.0, Stata 13 and earlier
-```
-
-Dependencies
-- GSL
-- OpenMP
-- Stata plugin interface
-
-I have only tested this in Linux so far. See [Stata's plugin documentation](http://www.stata.com/plugins/) for instructions on how to build the plugin in other platforms.
-
 Examples
 ---------
 
@@ -60,7 +42,6 @@ power_reg `depvar' `controls', cluster(`cluster') strata(`stratum') nstrata(2)
 
 * Simulate a CI
 simci `depvar' `controls', reps(1000)
-simci `depvar' `controls', reps(1000) fast
 simci `depvar' `controls', reps(1000) cluster(`cluster')
 simci `depvar' `controls' `stratum', reps(1000) cluster(`cluster') ///
     strata(`stratum') nstrata(2)
@@ -83,7 +64,37 @@ simci `depvar' `controls', reps(1000) cluster(`cluster') ///
     effect(effect(-0.5) bounds(-0.2 0.2))
 simci `depvar' `controls', reps(1000) strata(`stratum') nstrata(2) ///
     effect(effect(-0.5) bounds(-0.2 0.2))
+
+* Simulate a CI using C plugin (only tested under Linux)
+simci `depvar' `controls', reps(1000) fast
 ```
+
+Compiling
+---------
+
+The `fast` option uses a Stata plugin (compiled in C). To compile in Linux/Unix:
+```bash
+git clone https://github.com/mcaceresb/stata-power
+cd stata-power
+make SPI=3.0 # SPI v3.0, Stata 14 and later
+make SPI=2.0 # SPI v2.0, Stata 13 and earlier
+```
+
+The advantage is twofold
+
+1. First, C runs much faster than mata, which is how the function is implemented.
+2. Second, C allows parallel loop execution. Since the simulation computes regression coefficients `reps` times, using N threads should result in an approximately Nx speed improvement. This works even with Stata IC.
+
+Note Mata runs faster than Stata's reg **only because** this simulation uses just the regression coefficients; reg computes a lot of additional elements that the program does not use.
+
+Dependencies
+------------
+
+- The [GNU Scientific Library (GSL)](https://www.gnu.org/software/gsl)
+- [OpenMP](http://www.openmp.org)
+- [Stata Plugin Interface](http://www.stata.com/plugins) (SPI version 2.0 for Stata < 14; version 3.0 for Stata >= 14)
+
+I have only tested this in Linux so far. See [Stata's plugin documentation](http://www.stata.com/plugins/) for instructions on how to build the plugin in other platforms.
 
 TODO
 ----
