@@ -3,5 +3,6 @@ d Various tools and notes for power analysis
 d Mauricio Caceres Bravo, mauricio.caceres.bravo@gmail.com
 d
 d Support: email mauricio.caceres.bravo at gmail dot com
-f simci.ado
 f power_reg.ado
+f simci.ado
+f psimci.plugin
