@@ -17,6 +17,16 @@ Installation
 net install power_tools, from(https://raw.githubusercontent.com/mcaceresb/stata-power/master/)
 ```
 
+To update, run
+```stata
+adoupdate, update
+```
+
+To uninstall, run
+```stata
+ado uninstall power_tools
+```
+
 Examples
 ---------
 
