@@ -140,9 +140,21 @@ STDLL stata_call(int argc, char *argv[])
     // Parallelize ALL THE THINGS!
     // ---------------------------
 
-    sprintf(pbuf, "Parallelizing simulation. %d threads found.\n",
-            omp_get_num_threads());
-    SF_display(pbuf);
+    // Get the number of threads
+    int nthreads = 0;
+    #pragma omp parallel private(thread_id) shared(nthreads)
+    {
+        thread_id = omp_get_thread_num();
+        #pragma omp critical
+        {
+            nthreads = thread_id > nthreads? thread_id: nthreads;
+        }
+    }
+
+    nthreads++;
+    sprintf(buf, "Parallelizing simulation; %d threads found:\n",
+            nthreads);
+    SF_display(buf);
 
     // Initialize variables for parallel loop execution
     gsl_vector *Tp ;
@@ -253,7 +265,7 @@ double sim_ols(const gsl_matrix * X, const gsl_vector * y)
     gsl_blas_dgemv (CblasTrans, 1.0, X, y, 0.0, b);
 
     // You don't have to use Cholesky; a number of methods are available
-    // 
+    //
     // int s;
     // gsl_permutation * P = gsl_permutation_alloc (X->size2);
     // gsl_vector * tau    = gsl_vector_alloc (X->size2);
