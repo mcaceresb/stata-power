@@ -21,7 +21,7 @@
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_sort_vector.h>
-#include "../lib/spi-2.0/stplugin.h"
+#include "stplugin.h"
 
 /**
  * @file psimci.c
@@ -107,7 +107,7 @@ STDLL stata_call(int argc, char *argv[])
 
     // Set the random seed based on the time of day (seconds)
     srand(time(NULL));
-    gsl_rng * rng = gsl_rng_alloc (gsl_rng_default);
+    gsl_rng *rng = gsl_rng_alloc (gsl_rng_default);
     gsl_rng_set (rng, rand());
 
     // If too few variables (at least 2 for regressio), exit
@@ -154,7 +154,7 @@ STDLL stata_call(int argc, char *argv[])
     nthreads++;
     sprintf(buf, "Parallelizing simulation; %d threads found:\n",
             nthreads);
-    SF_display(buf);
+    SF_display (buf);
 
     // Initialize variables for parallel loop execution
     gsl_vector *Tp ;
@@ -180,13 +180,13 @@ STDLL stata_call(int argc, char *argv[])
         nloops    = 0;
 
         // Allocate memory for each object in each thread
-        mu = malloc(sizeof(double));
+        mu = malloc (sizeof(double));
         Tp = gsl_vector_alloc (n);
         Xp = gsl_matrix_alloc (n, k + 1);
 
         // Copy treatment vector and main matrix into each thread
-        gsl_vector_memcpy(Tp, T);
-        gsl_matrix_memcpy(Xp, X);
+        gsl_vector_memcpy (Tp, T);
+        gsl_matrix_memcpy (Xp, X);
 
         // Parallel for loop!
         #pragma omp for
@@ -200,11 +200,11 @@ STDLL stata_call(int argc, char *argv[])
             // 7. ...
             // 8. Profit?
             gsl_ran_shuffle (rng, Tp->data, n, sizeof(size_t));
-            gsl_matrix_set_col(Xp, 0, Tp);
-            gsl_blas_ddot(Tp, y, mu);
+            gsl_matrix_set_col (Xp, 0, Tp);
+            gsl_blas_ddot (Tp, y, mu);
             // gsl_blas_ddot(1.0 - Tp, y, mu);
-            rc  = SF_vstore(k + 1, r + 1, sim_ols(Xp, y));
-            rc  = SF_vstore(k + 2, r + 1, *mu);
+            rc  = SF_vstore (k + 1, r + 1, sim_ols(Xp, y));
+            rc  = SF_vstore (k + 2, r + 1, *mu);
             ++nloops;
         }
 
@@ -220,7 +220,7 @@ STDLL stata_call(int argc, char *argv[])
         {
             sprintf(pbuf, "\tThread %d performed %d simulations.\n",
                     thread_id, nloops);
-            SF_display(pbuf);
+            SF_display (pbuf);
         }
     }
 
@@ -228,8 +228,9 @@ STDLL stata_call(int argc, char *argv[])
     gsl_matrix_free (X);
     gsl_vector_free (T);
     gsl_vector_free (y);
+    gsl_rng_free (rng);
 
-    return(0) ;
+    return (0);
 }
 
 /**
@@ -305,12 +306,12 @@ double sim_ols(const gsl_matrix * X, const gsl_vector * y)
  */
 double pctile(gsl_vector * x, double pctile)
 {
-    gsl_sort_vector(x);
+    gsl_sort_vector (x);
     int n = x->size;
     int i = floor(n * pctile);
-    double qq = gsl_vector_get(x, i);
+    double qq = gsl_vector_get (x, i);
     if (i / n == pctile) {
-        qq = (qq + gsl_vector_get(x, i + 1)) / 2;
+        qq = (qq + gsl_vector_get (x, i + 1)) / 2;
     }
     return (qq);
 }

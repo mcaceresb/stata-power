@@ -587,28 +587,6 @@ program psimci, plugin using("psimci.plugin")
 
 mata:
 
-void function psimci_plugin(string scalar depvar,
-                            string scalar controls,
-                            string scalar touse,
-                            real scalar reps)
-{
-    y = X = .
-    st_view(y, ., depvar,   touse)
-    st_view(X, ., controls, touse)
-    stata("preserve")
-    stata("clear")
-    stata("getmata ")
-    results = J(reps, 3, 0)
-    for (r = 1; r <= reps; r++) {
-        st = (*shuffle)(treat)
-        mu = mean(y[selectindex(!st)])
-        XX = (st, X)
-        b  = invsym(cross(XX, 1, XX, 1)) * cross(XX, 1, y, 0)
-        results[r, 1::2] = b[1], mu
-    }
-    return(results)
-}
-
 real matrix function simci(string scalar depvar,
                            string scalar controls,
                            string scalar touse,

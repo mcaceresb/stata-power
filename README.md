@@ -98,7 +98,7 @@ make SPI=2.0 # SPI v2.0, Stata 13 and earlier
 The advantage is twofold
 
 1. First, C runs much faster than mata, which is how the function is implemented.
-2. Second, C allows parallel loop execution. Since the simulation computes regression coefficients `reps` times, using N threads should result in an approximately Nx speed improvement. This works even with Stata IC.
+2. Second, C allows parallel loop execution. Since the simulation computes regression coefficients `reps` times, using N threads should result in an approximately Nx speed improvement. This works even with Stata/IC.
 
 Note Mata runs faster than Stata's reg **only because** this simulation uses just the regression coefficients; reg computes a lot of additional elements that the program does not use.
 
