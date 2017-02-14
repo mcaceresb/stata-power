@@ -1,12 +1,19 @@
 CC = gcc
 SPI = 2.0
-DEPS = lib/spi-$(SPI)/stplugin.c src/psimci.c
-OUT = lib/spi-2.0/stplugin.o lib/spi-3.0/stplugin.o src/psimci.o
+ST_C = lib/spi-$(SPI)/stplugin.c
+ST_H = lib/spi-$(SPI)/stplugin.h
+DEPS = src/psimci.c
+OUT = lib/spi-2.0/stplugin.o lib/spi-3.0/stplugin.o src/psimci.o src/stplugin.c src/stplugin.h
 CFLAGS = -fopenmp -shared -fPIC -DSYSTEM=OPUNIX
 GSLFLAGS = -lgsl -lgslcblas -lm
 
-link: lib/spi-$(SPI)/stplugin.h
-	ln -srf lib/spi-$(SPI)/stplugin.h src/stplugin.h
+all: clean linkc linkh $(OUT)
+
+linkc: $(ST_C)
+	ln -srf $(ST_C) src/stplugin.c
+
+linkh: $(ST_H)
+	ln -srf $(ST_H) src/stplugin.h
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
@@ -14,7 +21,6 @@ link: lib/spi-$(SPI)/stplugin.h
 pluginmake: lib/spi-$(SPI)/stplugin.o src/psimci.o
 	gcc $(CFLAGS) lib/spi-$(SPI)/stplugin.o src/psimci.o $(GSLFLAGS) -o psimci.plugin
 
-all: clean $(OUT)
 .PHONY: clean
 clean:
 	rm -f $(OUT)

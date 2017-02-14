@@ -1,1 +1,1 @@
-../lib/spi-2.0/stplugin.c
+../lib/spi-2.0/stplugin.h
