@@ -8,7 +8,7 @@ ST_H = lib/spi-$(SPI)/stplugin.h
 DEPS = src/psimci.c
 OUT = lib/spi-$(SPI)/stplugin.o src/psimci.o src/stplugin.c src/stplugin.h
 CFLAGS = -fopenmp -shared -fPIC -DSYSTEM=OPUNIX
-GSLFLAGS = -lgsl -lgslcblas -lm
+GSLFLAGS = -lgsl -lgslcblas -lm -static -fPIC
 
 all: clean linksptc linkspth linkstc linksth $(OUT) pluginmake
 
