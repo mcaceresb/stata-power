@@ -1,4 +1,4 @@
-*! version 0.6.3 11Feb2017 Mauricio Caceres, caceres@nber.org
+*! version 0.6.4 14Feb2017 Mauricio Caceres, caceres@nber.org
 *! Simulated CI, MDE, and power for regression specification (accepts
 *! clusters and arbitrary number of stratifying/blocking variables)
 
@@ -407,16 +407,17 @@ program simci, rclass sortpreserve
     tempname results output
     if ("`fast'" != "") {
         * Run using C plug-in; fastest
+        tempfile f
         tempname beta mu
         preserve
             qui keep if `touse'
             keep  `depvar' `controls'
             order `depvar' `controls'
-            plugin call psimci `depvar' `controls', `ptreat' `reps'
-            mata: b  = strtoreal(tokens(st_local("b")))'
-            mata: mu = strtoreal(tokens(st_local("mu")))'
-            mata: `results' = `b', `mu', J(`reps', 1, 0)
+            plugin call psimci `depvar' `controls', `ptreat' `reps' "`f'"
+            mata: `results' = strtoreal((cat("`f'b"), cat("`f'mu"))), J(`reps', 1, 0)
             mata: `output'  = parse_simci(`results', `alpha', `nt')
+            mata: unlink("`f'b")
+            mata: unlink("`f'mu")
         restore
     }
     else if ("`compute'" == "ci") | ("`compute'" == "effect") {
