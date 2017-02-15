@@ -1,4 +1,4 @@
-*! version 0.6 11Feb2017 Mauricio Caceres, caceres@nber.org
+*! version 0.6.3 11Feb2017 Mauricio Caceres, caceres@nber.org
 *! Simulated CI, MDE, and power for regression specification (accepts
 *! clusters and arbitrary number of stratifying/blocking variables)
 
