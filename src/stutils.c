@@ -1,1 +1,1 @@
-../../stata-plugin-tools/src/stutils.c
+../lib/spt-0.1/stutils.c

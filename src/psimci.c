@@ -98,25 +98,23 @@ STDLL stata_call(int argc, char *argv[])
     }
 
     // Now we call the simulation function and output the results into b, mu
-    gsl_vector *b  = gsl_vector_alloc (reps);
-    gsl_vector *mu = gsl_vector_alloc (reps);
+    gsl_vector *b   = gsl_vector_alloc (reps);
+    gsl_vector *mu  = gsl_vector_alloc (reps);
     sim_ci (X, y, P, reps, b, mu);
 
-    // Put the results into a local Stata variable
-    char obuf[15], bchar[16 * reps], muchar[16 * reps];
-    strcpy (bchar,  "");
-    strcpy (muchar, "");
-    for (int r = 0; r < reps; r++) {
-        sprintf (obuf, " %15.9f", gsl_vector_get (b,  r));
-        strcat  (bchar, obuf);
-        sprintf (obuf, " %15.9f", gsl_vector_get (mu, r));
-        strcat  (muchar, obuf);
-    }
-
-    // Note stata locals are an illusion---they are globals prepended
-    // by _ that get destroyed when entering/exiting a given space.
-    SF_macro_save ("_b",  bchar);
-    SF_macro_save ("_mu", muchar);
+    // Not sure that there is a good way to output this into Stata So I
+    // write to a file and read it back.
+    char outb[64], outmu[64];
+    strcpy (outb,  argv[2]);
+    strcpy (outmu, argv[2]);
+    strcat (outb,  "b");
+    strcat (outmu, "mu");
+    FILE *fb  = fopen (outb, "wb");
+    FILE *fmu = fopen (outmu, "wb");
+    gsl_vector_fprintf (fb,  b,  "%15.9f");
+    gsl_vector_fprintf (fmu, mu, "%15.9f");
+    fclose (fb);
+    fclose (fmu);
 
     // Cleanup
     gsl_matrix_free (X);
@@ -234,7 +232,7 @@ int sim_ci (const gsl_matrix * X,
             gsl_matrix_set_col (Xp, 0, Tp);
             gsl_vector_set (b, r, sim_ols(Xp, y));
             gsl_blas_ddot (Tp, y, sty);
-            gsl_vector_set (mu, r, (sy - sty) / nc);
+            gsl_vector_set (mu, r, (*sy - *sty) / nc);
             ++nloops;
         }
 
