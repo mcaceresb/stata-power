@@ -51,7 +51,7 @@ program simci, rclass sortpreserve
                                   ///   the variable's categories.
         effect(str)               /// Induce artificial effect
         power(str)                /// Search for power
-                                  /// 
+                                  ///
         fast                      /// Use C plugin for speed
 	]
     local savelist `varlist'
@@ -407,31 +407,15 @@ program simci, rclass sortpreserve
     tempname results output
     if ("`fast'" != "") {
         * Run using C plug-in; fastest
+        tempname beta mu
         preserve
-        qui {
-            keep if `touse'
+            qui keep if `touse'
             keep  `depvar' `controls'
             order `depvar' `controls'
-
-            * Data sharing with C is a bit primitive, so we store the
-            * results in newly created variables mu and beta
-            tempvar beta mu
-            local out `beta' `mu'
-            gen `beta' = .
-            gen `mu'   = .
-
-            * If the number of repetitions is higher, we need to expand
-            * the data set
-            local nonmiss = `=_N'
-            set obs `:di max(`reps', `nonmiss')'
-        }
-
-            * Run the simulation
-            local psimci plugin call psimci
-            `psimci' `depvar' `controls' `out' in 1 / `nonmiss', `ptreat' `reps'
-            qui replace `mu' = `mu' / `:di scalar(ntreat)'
-            qui drop if mi(`beta')
-            mata: `results' = st_data(., "`out'"), J(`reps', 1, 0)
+            plugin call psimci `depvar' `controls', `ptreat' `reps'
+            mata: b  = strtoreal(tokens(st_local("b")))'
+            mata: mu = strtoreal(tokens(st_local("mu")))'
+            mata: `results' = `b', `mu', J(`reps', 1, 0)
             mata: `output'  = parse_simci(`results', `alpha', `nt')
         restore
     }
