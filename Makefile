@@ -1,7 +1,7 @@
 CC = gcc
 SPI = 2.0
 SPT = 0.1
-CFLAGS = -shared -fopenmp -fPIC -DSYSTEM=OPUNIX
+CFLAGS = -Wall -shared -fopenmp -fPIC -DSYSTEM=OPUNIX
 GSLFLAGS = -lgsl -lgslcblas -lm -static
 SPT_C = lib/spt-$(SPT)/stutils.c
 SPT_H = lib/spt-$(SPT)/stutils.h
