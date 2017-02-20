@@ -84,6 +84,14 @@ benchmark, disp reps(10): qui simci `depvar' `controls', reps(1000)
 benchmark, disp reps(10): qui simci `depvar' `controls', reps(1000) fast
 ```
 
+Note that the `fast` option depends on the [GNU Scientific Library (GSL)](https://www.gnu.org/software/gsl). If your system's `libgsl*.so` and `libgslcblas*.so` files are not in `/usr/lib`, you should point to them _**before**_ starting Stata by setting `LD_LIBRARY_PATH`. I regularly `ssh` into a RedHat server, and the files were in `/usr/local/lib`, so I ran
+```bash
+LD_LIBRARY_PATH=/usr/local/lib
+export LD_LIBRARY_PATH
+```
+
+before starting Stata. You can add those lines to `~/.bashrc` to avoid having to do that every time you log into a session.
+
 Compiling
 ---------
 

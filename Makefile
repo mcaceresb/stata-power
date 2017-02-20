@@ -1,14 +1,14 @@
 CC = gcc
 SPI = 2.0
 SPT = 0.1
+CFLAGS = -Wall -shared -fopenmp -fPIC -DSYSTEM=OPUNIX
+GSLFLAGS = -lgsl -lgslcblas -lm -static
 SPT_C = lib/spt-$(SPT)/stutils.c
 SPT_H = lib/spt-$(SPT)/stutils.h
 ST_C = lib/spi-$(SPI)/stplugin.c
 ST_H = lib/spi-$(SPI)/stplugin.h
-DEPS = src/psimci.c
 OUT = lib/spi-$(SPI)/stplugin.o src/psimci.o src/stplugin.c src/stplugin.h
-CFLAGS = -fopenmp -shared -fPIC -DSYSTEM=OPUNIX
-GSLFLAGS = -lgsl -lgslcblas -lm
+DEPS = src/psimci.
 
 all: clean linksptc linkspth linkstc linksth $(OUT) pluginmake
 
