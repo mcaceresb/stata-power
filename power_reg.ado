@@ -36,6 +36,7 @@ program power_reg, rclass
     marksample touse
     markout `touse' `strata', strok
     markout `touse' `cluster', strok
+    markout `touse' `varlist'
 	_rmcoll `controls' if `touse', expand
     local controls `r(varlist)'
     gen byte `notouse' = !`touse'
@@ -368,6 +369,8 @@ program power_reg, rclass
     * Report
     * ------
 
+    qui count if `touse'
+    return scalar N          = `r(N)'
     return scalar mean       = `mean'
     return scalar std        = `:di sqrt(`var')'
     return scalar rmse       = `rmse'
