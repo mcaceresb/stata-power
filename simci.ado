@@ -145,6 +145,7 @@ program simci, rclass sortpreserve
     marksample touse
     markout `touse' `strata', strok
     markout `touse' `cluster', strok
+    markout `touse' `varlist'
 	_rmcoll `controls' if `touse', expand
     local controls `r(varlist)'
     gen byte `notouse' = !`touse'
@@ -471,6 +472,8 @@ program simci, rclass sortpreserve
             mata: `output' = parse_power(`results', `nt', `tol')
     }
     mata: mata drop `atreat' `nt' `results' `shufflefun'
+    qui count if `todo'
+    return scalar N = `r(N)'
 
     * Pretty printing
     * ---------------
@@ -534,7 +537,7 @@ program simci, rclass sortpreserve
 end
 
 capture program drop psimci
-program psimci, plugin using("psimci.plugin")
+capture program psimci, plugin using("psimci.plugin")
 
 ***********************************************************************
 *                           Mata functions                            *
