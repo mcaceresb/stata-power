@@ -200,7 +200,7 @@ int sim_ci (const gsl_matrix * X,
     double *sty ;
 
     // Get the number of threads available to OMP
-    st_printf("Parallelizing simulation; %d threads found:\n",
+    sf_printf("Parallelizing simulation; %d threads found:\n",
               get_omp_num_threads());
 
     // Parallelize execution: Note We need a copy of Xp and Tp for each
@@ -243,7 +243,7 @@ int sim_ci (const gsl_matrix * X,
         // threads are done running.
         #pragma omp critical
         {
-            st_printf("\tThread %d performed %d simulations.\n",
+            sf_printf("\tThread %d performed %d simulations.\n",
                       omp_get_thread_num(), nloops);
         }
 

@@ -2,7 +2,7 @@ CC = gcc
 SPI = 2.0
 SPT = 0.1
 CFLAGS = -Wall -shared -fopenmp -fPIC -DSYSTEM=OPUNIX
-GSLFLAGS = -lgsl -lgslcblas -lm -static
+GSLFLAGS = -lgsl -lgslcblas -lm
 SPT_C = lib/spt-$(SPT)/stutils.c
 SPT_H = lib/spt-$(SPT)/stutils.h
 ST_C = lib/spi-$(SPI)/stplugin.c
