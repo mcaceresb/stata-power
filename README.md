@@ -88,19 +88,19 @@ benchmark, disp reps(10): qui simci `depvar' `controls', reps(1000)
 benchmark, disp reps(10): qui simci `depvar' `controls', reps(1000) fast
 ```
 
-Note that the `fast` option depends on the [GNU Scientific Library
-(GSL)](https://www.gnu.org/software/gsl). If your system's `libgsl*.so`
-and `libgslcblas*.so` files are not in `/usr/lib`, you should point
-to them _**before**_ starting Stata by setting `LD_LIBRARY_PATH`.
-I regularly `ssh` into a RedHat server, and the files were in
-`/usr/local/lib`, so I ran
+Note that the `fast` option depends on a plugin. The
+only non-standard library is the [GNU Scientific Library
+(GSL)](https://www.gnu.org/software/gsl), which is statically linked, so
+there shouldn't be any problems on most systems. However, if any of the
+dynamically linked libraries are missing, you may need to add their path
+(assuming they are somewhere in your system) to `LD_LIBRARY_PATH`; e.g.
 ```bash
-LD_LIBRARY_PATH=/usr/local/lib
+LD_LIBRARY_PATH=LD_LIBRARY_PATH:/usr/local/lib
 export LD_LIBRARY_PATH
 ```
 
-before starting Stata. You can add those lines to `~/.bashrc` to avoid
-having to do that every time you log into a session.
+before starting Stata. If this fixes the issue, you can add those lines
+to `~/.bashrc` to avoid having to do that every time you log into a session.
 
 Compiling
 ---------

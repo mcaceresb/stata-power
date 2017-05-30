@@ -2,7 +2,7 @@
  * Program: psimci.c
  * Author:  Mauricio Caceres Bravo <caceres@nber.org>
  * Created: Sun Feb 12 19:28:43 EST 2017
- * Updated: Tue Feb 14 16:59:12 EST 2017
+ * Updated: Tue May 30 18:11:50 EDT 2017
  * Purpose: Stata plugin to simulate a CI under H0: b = 0 for a
  *          treatment effect given a regression specification.
  * Note:    See stata.com/plugins for more on Stata plugins
@@ -11,7 +11,7 @@
 /**
  * @file psimci.c
  * @author Mauricio Caceres bravo
- * @date 12 Mar 2017
+ * @date 30 May 2017
  * @brief Stata plugin to simulate a CI for a placebo treatment.
  *
  * See the documentation for simci.ado (e.g. help simci from Stata)
@@ -53,6 +53,9 @@
  */
 STDLL stata_call(int argc, char *argv[])
 {
+    // Simple call to see if the plugin loaded
+    char buffer[16]; strcpy (buffer, argv[0]);
+    if ( strcmp(buffer, "check") == 0 ) return (0);
 
     // Initialize the variables to use
     ST_int      i, j ;
