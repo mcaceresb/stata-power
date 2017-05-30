@@ -1,4 +1,4 @@
-*! version 0.6.4 14Feb2017 Mauricio Caceres, caceres@nber.org
+*! version 0.7.0 30May2017 Mauricio Caceres, caceres@nber.org
 *! Simulated CI, MDE, and power for regression specification (accepts
 *! clusters and arbitrary number of stratifying/blocking variables)
 
@@ -11,23 +11,23 @@ capture mata: mata drop simci()
 capture mata: mata drop simci_continuous()
 capture mata: mata drop simci_binary()
 
-capture mata: mata drop power_search()
-capture mata: mata drop parse_simci()
-capture mata: mata drop parse_power()
+capture mata: mata drop simci_parse_simci()
+capture mata: mata drop simci_power_search()
+capture mata: mata drop simci_parse_power()
 
 capture mata: mata drop simci_setup_basic()
 capture mata: mata drop simci_setup_strata()
 capture mata: mata drop simci_setup_cluster()
 capture mata: mata drop simci_panel_info()
 
-capture mata: mata drop shuffle_basic()
-capture mata: mata drop shuffle_strata()
-capture mata: mata drop shuffle_cluster()
-capture mata: mata drop shuffle_strata_cluster()
+capture mata: mata drop simci_shuffle_basic()
+capture mata: mata drop simci_shuffle_strata()
+capture mata: mata drop simci_shuffle_cluster()
+capture mata: mata drop simci_shuffle_strata_cluster()
 
-capture mata: mata drop expand_rows()
-capture mata: mata drop pctile()
-capture mata: mata drop bc_var()
+capture mata: mata drop simci_expand_rows()
+capture mata: mata drop simci_pctile()
+capture mata: mata drop simci_var()
 
 ***********************************************************************
 *                            Main Program                             *
@@ -57,19 +57,19 @@ program simci, rclass sortpreserve
     local savelist `varlist'
 
     * Figure out what the function will output
-	if ("`effect'" != "") & ("`power'" != "") {
+	if ( ("`effect'" != "") & ("`power'" != "") ) {
 		di as err "{p}options effect and power are mutually exclusive{p_end}"
-		exit
+		exit 198
 	}
-    else if ("`effect'" != "") & ("`power'"  == "") local compute effect
-    else if ("`effect'" == "") & ("`power'"  != "") local compute power
-    else if ("`effect'" == "") & ("`power'"  == "") local compute ci
+    else if ( ("`effect'" != "") & ("`power'"  == "") ) local compute effect
+    else if ( ("`effect'" == "") & ("`power'"  != "") ) local compute power
+    else if ( ("`effect'" == "") & ("`power'"  == "") ) local compute ci
 
     * If asked for an effect, parse
-    if ("`compute'" == "effect") {
+    if ( "`compute'" == "effect" ) {
         local 0 , `effect'
         syntax, effect(real) [binary bounds(str)]
-        if ("`bounds'" != "auto") {
+        if ( "`bounds'" != "auto" ) {
             local 0 , bounds(`bounds')
             syntax, [bounds(numlist)]
         }
@@ -77,14 +77,14 @@ program simci, rclass sortpreserve
     else local effect 0
 
     * If asked for power search, parse
-    if ("`compute'" == "power") {
+    if ( "`compute'" == "power" ) {
         local 0 , `power'
         syntax, DIRection(str) [kappa(real 0.8) binary tol(real 0) startat(real 0)]
     }
 
     local varlist `savelist'
 
-    /*
+    **
      * # Notes
      *
      * The formulas and citations below only justify the logic for when
@@ -135,7 +135,7 @@ program simci, rclass sortpreserve
      *   61 Using Randomization in Development Economics Research: A
      *   Toolkit. In Handbook of Development Economics, volume 4, pages
      *   3895–3962.
-     */
+     **
 
     * Parse varlist and sample to use
     * -------------------------------
@@ -154,58 +154,52 @@ program simci, rclass sortpreserve
     * ----------------------
 
     * Effect opts
-    if ("`compute'" == "effect") {
-        if (`effect' == 0) & ("`binary'" != "") {
+    if ( "`compute'" == "effect" ) {
+        if ( (`effect' == 0) & ("`binary'" != "") ) {
             di "{p}{it:warning:} ignoring option -binary- with a 0 effect{p_end}"
         }
 
-        if !(inlist(`:list sizeof bounds', 0, 1, 2)) {
+        if !inlist(`:list sizeof bounds', 0, 1, 2) {
             di as err "-bounds- must be empty, 'auto', or an upper and lower bound"
             exit
         }
     }
 
     * Power opts
-    if ("`compute'" == "power") {
-        if !(inlist("`direction'"), "pos", "neg") {
+    if ( "`compute'" == "power" ) {
+        if !inlist("`direction'", "pos", "neg") {
             di as err "please specify `direction' = 'pos', 'neg'"
             exit
         }
 
-        if ((`kappa' <= 0) | (`kappa' >= 1)) {
+        if ( (`kappa' <= 0) | (`kappa' >= 1) ) {
             di as err "can't search for power outside (0, 1)"
             exit
         }
 
-        if (`tol' == 0) {
+        if ( `tol' == 0 ) {
             local tol = min(1e-2, 10 / `reps')
         }
 
         local mintol = min(`kappa', 1 - `kappa')
-        if (`tol' >= `mintol') {
+        if ( `tol' >= `mintol' ) {
             di as err "with power `kappa', tolerance should smaller than `mintol'"
             exit
         }
 
         local maxtol = 1 / `reps'
-        if (`tol' < `maxtol') {
+        if ( `tol' < `maxtol' ) {
             di as err "with `reps' repetitions, tolerance should greater than `maxtol'"
             exit
         }
     }
 
     * Strata opts
-    if ("`strata'" != "") {
+    if ( "`strata'" != "" ) {
         qui ds `strata'
         local strata `r(varlist)'
 
-        * if !`:list strata in controls' {
-        *     di as err "{p}stratifying variable '`strata''" ///
-        *               " must all be in the controls{p_end}"
-        *     exit 198
-        * }
-
-        if `:list sizeof strata' != `:list sizeof nstrata' {
+        if ( `:list sizeof strata' != `:list sizeof nstrata' ) {
             di as err "{p}specify # of strata for each stratifying variable{p_end}"
             exit 198
         }
@@ -215,13 +209,13 @@ program simci, rclass sortpreserve
         foreach ns of local nstrata {
             local ++i
             local sv: word `i' of `strata'
-            if (`ns' < 2) & (`ns' != 0) {
+            if ( (`ns' < 2) & (`ns' != 0) ) {
                 di as err "{p}asked for `ns' strata for `sv'" ///
                           "; specify n > 1 or 0{p_end}"
                 exit 198
             }
-            if (`ns' == 0) {
-                if ("`cluster'" != "") {
+            if ( `ns' == 0 ) {
+                if ( "`cluster'" != "" ) {
                     di "{p}{it:warning:} `sv' should be at the cluster" ///
                        " level or there may be unexpected results. {p_end}"
                 }
@@ -236,14 +230,29 @@ program simci, rclass sortpreserve
 
     * 'fast' only works for the simple case at the moment
     local complicated = ("`strata'" != "") | ("`cluster'" != "")
-    if ("`fast'" != "") & `complicated' {
-        di as err "'fast' not yet available with stratification or clustering."
-        exit 198
-    }
+    if ( "`fast'" != "" ) {
 
-    if ("`fast'" != "") & ("`compute'" != "ci") {
-        di as err "'fast' not yet available with -effect()- or -power()-."
-        exit 198
+        if ( `complicated' ) {
+            di as err "-fast- not yet available with stratification or clustering."
+            exit 198
+        }
+
+        if ( "`compute'" != "ci" ) {
+            di as err "-fast- not yet available with -effect()- or -power()-."
+            exit 198
+        }
+
+        if ( "`c(os)'" == "Unix" ) {
+            capture plugin call psimci, check
+            if ( _rc ) {
+                di as err "unable to load -fast- plugin"
+                exit 198
+            }
+        }
+        else {
+            di as err "-fast- option only available on Unix"
+            exit 198
+        }
     }
 
     * Set up randomization for Mata
@@ -260,14 +269,15 @@ program simci, rclass sortpreserve
     * shuffle the treatment indicator.
 
     tempname shufflefun atreat nt
-    if ("`cluster'" != "") {
+    if ( "`cluster'" != "" ) {
         tempvar clusorder
-        qui if regexm("`:type `cluster''", "str") {
+        cap confirm numeric variable `cluster'
+        qui if ( _rc != 0 ) {
             encode `cluster' if `touse', gen(`clusorder')
         }
         else local clusorder `cluster'
 
-        if ("`strata'" == "") {
+        if ( "`strata'" == "" ) {
             * Cluster-level randomization: We shuffle a (0, 1) indicator with PJ
             * 1s and (1 - P)J 0s and then expand each element by the number of
             * observations in each cluster.
@@ -276,7 +286,7 @@ program simci, rclass sortpreserve
                                                  st_local("touse"), `ptreat')
             mata: st_local("nclus", strofreal(rows(asarray(`atreat', "2"))))
             mata: `nt' = asarray(`atreat', "0")
-            mata: `shufflefun' = &shuffle_cluster()
+            mata: `shufflefun' = &simci_shuffle_cluster()
         }
         else {
             * Stratified cluster-level randomization: We shuffle prod(`nstrata')
@@ -290,7 +300,7 @@ program simci, rclass sortpreserve
                 qui collapse (sum) `touse' (mean) `strata', by(`clusorder')
                 local n2 = floor(_N / 2)
 
-                if (`st' > `n2') {
+                if ( `st' > `n2' ) {
                     di as err "{p}asked for `st' strata with `=_N' clusters; " ///
                               "should be <= `n2'{p_end}"
                     restore
@@ -305,7 +315,7 @@ program simci, rclass sortpreserve
                     local ns2: word `i' of `nstrata2'
                     local sv:  word `i' of `strata'
                     sort `groups' `sv'
-                    if (`ns' == 0) {
+                    if ( `ns' == 0 ) {
                         by `groups' `sv': replace `group' = (_n == 1)
                         by `groups': replace `group' = sum(`group')
                         local ns = `ns2'
@@ -318,7 +328,7 @@ program simci, rclass sortpreserve
 
                 qui duplicates report `groups'
                 cap assert `r(unique_value)' == `st'
-                if (_rc != 0) & ("`forcestrata'" == "") {
+                if ( (_rc != 0) & ("`forcestrata'" == "") ) {
                     di as err "asked for `st' strata but computed"                ///
                               " `r(unique_value)'." _n(1) "check the stratifying" ///
                               " covariates or run again with -forcestrata-"
@@ -341,13 +351,13 @@ program simci, rclass sortpreserve
             qui merge m:1 `clusorder' using `stratafile'
             qui assert (_merge == 3) | `notouse'
             drop _merge
-            mata: `shufflefun' = &shuffle_strata_cluster()
+            mata: `shufflefun' = &simci_shuffle_strata_cluster()
         }
     }
     else {
         qui count if `touse'
         local N = `r(N)'
-        qui if ("`strata'" == "") {
+        qui if ( "`strata'" == "" ) {
             * Individual-level randomization: We shuffle a (0, 1) indicator with
             * PN 1s and the rest 0s.
             scalar ntreat   = `:di %15.0f ceil(`ptreat' * `r(N)')'
@@ -356,14 +366,14 @@ program simci, rclass sortpreserve
             mata: `atreat' = simci_setup_basic(st_numscalar("ntreat"), ///
                                                st_numscalar("ncontrol"))
             mata: `nt' = st_numscalar("ntreat")
-            mata: `shufflefun' = &shuffle_basic()
+            mata: `shufflefun' = &simci_shuffle_basic()
         }
         else {
             * Stratified individual-level randomization: We shuffle prod(`nstrata')
             * (0, 1) indicators with P(N / prod(`nstrata')) 1s and the rest 0s
             * at each strata; we then stack the indicators.
             local n2 = floor(`N' / 2)
-            if (`st' > `n2') { // Stratified individual-level randomization
+            if ( `st' > `n2' ) { // Stratified individual-level randomization
                 di as err "{p}asked for `st' strata with `N' obs; " ///
                           "should be <= `n2'{p_end}"
                 exit
@@ -377,7 +387,7 @@ program simci, rclass sortpreserve
                 local ns2: word `i' of `nstrata2'
                 local sv:  word `i' of `strata'
                 sort `notouse' `groups' `sv'
-                if (`ns' == 0) {
+                if ( `ns' == 0 ) {
                     by `notouse' `groups' `sv': replace `group' = (_n == 1)
                     by `notouse' `groups': replace `group' = sum(`group')
                     local ns = `ns2'
@@ -392,7 +402,7 @@ program simci, rclass sortpreserve
                                                 st_local("touse"),  ///
                                                 0, `ptreat', `st')
             mata: `nt' = asarray(`atreat', "0")
-            mata: `shufflefun' = &shuffle_strata()
+            mata: `shufflefun' = &simci_shuffle_strata()
         }
     }
 
@@ -401,12 +411,12 @@ program simci, rclass sortpreserve
 
     sort `notouse' `groups' `clusorder'
 
-    if ("`compute'" == "ci")   local binary ""
-    else if ("`binary'" == "") local binary _continuous
-    else if ("`binary'" != "") local binary _binary
+    if ( "`compute'" == "ci" )   local binary ""
+    else if ( "`binary'" == "" ) local binary _continuous
+    else if ( "`binary'" != "" ) local binary _binary
 
     tempname results output
-    if ("`fast'" != "") {
+    if ( "`fast'" != "" ) {
         * Run using C plug-in; fastest
         tempfile f
         tempname beta mu
@@ -416,12 +426,12 @@ program simci, rclass sortpreserve
             order `depvar' `controls'
             plugin call psimci `depvar' `controls', `ptreat' `reps' "`f'"
             mata: `results' = strtoreal((cat("`f'b"), cat("`f'mu"))), J(`reps', 1, 0)
-            mata: `output'  = parse_simci(`results', `alpha', `nt')
+            mata: `output'  = simci_parse_simci(`results', `alpha', `nt')
             mata: unlink("`f'b")
             mata: unlink("`f'mu")
         restore
     }
-    else if ("`compute'" == "ci") | ("`compute'" == "effect") {
+    else if ( ("`compute'" == "ci") | ("`compute'" == "effect") ) {
         * Run the CI simulation using Stata
         mata: `results' = simci`binary'(st_local("depvar"),   /// depvar
                                         st_local("controls"), /// controls
@@ -432,10 +442,10 @@ program simci, rclass sortpreserve
                                         `shufflefun')         //  shuffle
 
         * Find power given bounds if effect requested (auto or provided)
-        if ("`bounds'" == "") {
-            mata: `output' = parse_simci(`results', `alpha', `nt')
+        if ( "`bounds'" == "" ) {
+            mata: `output' = simci_parse_simci(`results', `alpha', `nt')
         }
-        else if ("`bounds'" == "auto") {
+        else if ( "`bounds'" == "auto" ) {
             tempname resb cib
             mata: `resb' = simci(st_local("depvar"),   /// depvar
                                  st_local("controls"), /// controls
@@ -444,49 +454,52 @@ program simci, rclass sortpreserve
                                  `reps',               /// reps
                                  0,                    /// effectret
                                  `shufflefun')         //  shuffle
-            mata: `cib' = pctile(`resb'[, 1], (`alpha' / 2, 1 - `alpha' / 2))
-            mata: `output' = parse_simci(`results', `alpha', `nt', `cib'[1], `cib'[2])
+            mata: `cib' = simci_pctile(`resb'[, 1], (`alpha' / 2, 1 - `alpha' / 2))
+            mata: `output' = simci_parse_simci(`results', `alpha', `nt', `cib'[1], `cib'[2])
             mata: mata drop `cib' `resb'
         }
         else {
             gettoken lower upper: bounds
-            mata: `output' = parse_simci(`results', `alpha', `nt', `lower', `upper')
+            mata: `output' = simci_parse_simci(`results', `alpha', `nt', `lower', `upper')
         }
     }
-    else if ("`compute'" == "power") {
+    else if ( "`compute'" == "power" ) {
         * Find MDE given power level
-        mata: `results' = power_search(st_local("depvar"),    /// depvar
-                                       st_local("controls"),  /// controls
-                                       st_local("touse"),     /// touse
-                                       `atreat',              /// treat
-                                       `reps',                /// reps
-                                       `nt',                  /// nt
-                                       0,                     /// effect
-                                       `shufflefun',          /// shuffle
-                                       `alpha',               /// alpha
-                                       `kappa',               /// kappa
-                                       "`direction'",         /// direction
-                                       `tol',                 /// tol
-                                       `startat',             /// startat
-                                       &simci`binary'())      //  effectfun
-            mata: `output' = parse_power(`results', `nt', `tol')
+        mata: `results' = simci_power_search(st_local("depvar"),    /// depvar
+                                             st_local("controls"),  /// controls
+                                             st_local("touse"),     /// touse
+                                             `atreat',              /// treat
+                                             `reps',                /// reps
+                                             `nt',                  /// nt
+                                             0,                     /// effect
+                                             `shufflefun',          /// shuffle
+                                             `alpha',               /// alpha
+                                             `kappa',               /// kappa
+                                             "`direction'",         /// direction
+                                             `tol',                 /// tol
+                                             `startat',             /// startat
+                                             &simci`binary'())      //  effectfun
+            mata: `output' = simci_parse_power(`results', `nt', `tol')
     }
-    mata: mata drop `atreat' `nt' `results' `shufflefun'
-    qui count if `todo'
+    mata: mata drop `atreat'
+    mata: mata drop `nt'
+    mata: mata drop `results'
+    mata: mata drop `shufflefun'
+    qui count if `touse'
     return scalar N = `r(N)'
 
     * Pretty printing
     * ---------------
 
-    if ("`compute'" == "ci") | ("`compute'" == "effect") {
+    if ( ("`compute'" == "ci") | ("`compute'" == "effect") ) {
         local pow  "CI simulation for linear regression"
         local eq   "Y = a + b T + X + e"
         local null "Ho: b = `effect' versus Ha: b != `effect'""
 
-        local trimci     = "(`:di trim("`:di %9.4f `r(lower)''")'"
-        local trimci     = "`trimci', `:di trim("`:di %9.4f `r(upper)''")')"
-        local trimci_pct = "(`:di trim("`:di %9.4f `r(lower_pct)''")'"
-        local trimci_pct = "`trimci_pct', `:di trim("`:di %9.4f `r(upper_pct)''")')"
+        local trimci     = "(`:di trim("`:di %9.4f scalar(r_lower)'")'"
+        local trimci     = "`trimci', `:di trim("`:di %9.4f scalar(r_upper)'")')"
+        local trimci_pct = "(`:di trim("`:di %9.4f scalar(r_lower_pct)'")'"
+        local trimci_pct = "`trimci_pct', `:di trim("`:di %9.4f scalar(r_upper_pct)'")')"
 
         di ""
         di "`pow': `eq'"
@@ -495,20 +508,20 @@ program simci, rclass sortpreserve
         di "Study parameters:"
         di "    alpha = `:di %9.4f `alpha''"
         di "        P = `:di %9.4f `ptreat''"
-        di "       PN = `:di %9.0gc `r(nt)''"
+        di "       PN = `:di %9.0gc scalar(r_nt)'"
         di ""
         di "Simulated results:"
-        di "       m1 = `:di %9.4f `r(mu)''"
-        di "        b = `:di %9.4f `r(b)''"
-        di "     sd_b = `:di %9.4f `r(sd)''"
+        di "       m1 = `:di %9.4f scalar(r_mu)'"
+        di "        b = `:di %9.4f scalar(r_b)'"
+        di "     sd_b = `:di %9.4f scalar(r_b_sd)'"
         di "       ci = `trimci'"
         di "  ci / m1 = `trimci_pct'"
-        if ("`r(power)'" != "") {
+        if ( scalar(r_power) != . ) {
             di ""
             di "Simulated power for b = `effect':"
-            di "    power = `:di %9.4f `r(power)''"
-            di "    lower = `:di %9.4f `r(lower)''"
-            di "    upper = `:di %9.4f `r(upper)''"
+            di "    power = `:di %9.4f scalar(r_power)'"
+            di "    lower = `:di %9.4f scalar(r_lower)'"
+            di "    upper = `:di %9.4f scalar(r_upper)'"
         }
     }
     else {
@@ -518,20 +531,20 @@ program simci, rclass sortpreserve
         di "Study parameters:"
         di "    alpha = `:di %9.4f `alpha''"
         di "        P = `:di %9.4f `ptreat''"
-        if ("`cluster'" != "") di "     clus = `:di %9.0gc `nclus''"
+        if ( "`cluster'" != "" ) di "     clus = `:di %9.0gc `nclus''"
         else di "      obs = `:di %9.0gc `N''"
-        di "  treated = `:di %9.0gc `r(nt)''"
+        di "  treated = `:di %9.0gc scalar(r_nt)'"
         di "    kappa = `:di %9.4f `kappa''"
         di "      tol = `:di %9.4f `tol''"
         di ""
         di "Simulated results:"
-        di "       m1 = `:di %9.4f `r(mu)''"
-        di "      MDE = `:di %9.4f `r(mde)''"
-        di "    power = `:di %9.4f `r(power)''"
-        di " MDE / m1 = `:di %9.4f `r(mde)' / `r(mu)''"
+        di "       m1 = `:di %9.4f scalar(r_mu)'"
+        di "      MDE = `:di %9.4f scalar(r_mde)'"
+        di "    power = `:di %9.4f scalar(r_power)'"
+        di " MDE / m1 = `:di %9.4f scalar(r_mde) / scalar(r_mu)'"
         di ""
         di "`stopped'"
-        if ("`increase'" != "") di "`increase'"
+        if ( "`increase'" != "" ) di "`increase'"
     }
     di ""
 end
@@ -645,7 +658,7 @@ real matrix function simci_binary(string scalar depvar,
         t0 = tk - sk
 
         // Check effect is OK
-        if (effect > t0 / tk) {
+        if ( effect > t0 / tk ) {
             // printf("warning: effect larger than the portion of 0s in treatment\n")
             // printf("    effect = %9.4f\n", effect)
             // printf("      mu_t = %9.4f\n", mean(y[selectindex(st)]))
@@ -656,7 +669,7 @@ real matrix function simci_binary(string scalar depvar,
             results[r, 3] = 1
             realeff = t0 / tk
         }
-        else if (effect < - sk / tk)  {
+        else if ( effect < - sk / tk )  {
             // printf("warning: effect smaller than the portion of 1s in treatment\n")
             // printf("    effect = %9.4f\n", effect)
             // printf("      mu_t = %9.4f\n", mean(y[selectindex(st)]))
@@ -671,7 +684,7 @@ real matrix function simci_binary(string scalar depvar,
         // Swap 0s or 1s, as requested
         yy  = y
         sk1 = abs(round(realeff * tk))
-        if (realeff > 0) {
+        if ( realeff > 0 ) {
             sk2 = t0 - sk1
         }
         else {
@@ -728,7 +741,7 @@ transmorphic function simci_setup_strata(string scalar groups,
                                          real scalar ptreat,
                                          real scalar nstrata)
 {
-    if (cluster == 1) {
+    if ( cluster == 1 ) {
         nj = st_data(., touse)
         simci_panel_info(rows(nj), min(nj), max(nj))
     }
@@ -751,7 +764,7 @@ transmorphic function simci_setup_strata(string scalar groups,
     asarray(atreat, "1", mtreat)
     asarray(atreat, "2", streat)
     asarray(atreat, "3", info)
-    if (cluster == 1) {
+    if ( cluster == 1 ) {
         asarray(atreat, "4", nj)
     }
     return(atreat)
@@ -763,10 +776,10 @@ void function simci_panel_info(real scalar N,
                                real scalar pmax,
                                | string scalar what)
 {
-    if (args() == 3) {
+    if ( args() == 3 ) {
         what = "panel"
     }
-    if (pmin == pmax) {
+    if ( pmin == pmax ) {
         nstr = strtrim(sprintf("%21.0fc", N))
         jstr = strtrim(sprintf("%21.0fc", pmin))
         printf("Balanced " + what + ". J = " + nstr + ", n_j = " + jstr + "\n")
@@ -783,19 +796,19 @@ void function simci_panel_info(real scalar N,
 // --------------------------------------------------------------------
 
 // Just shuffle the treatment vector
-real colvector function shuffle_basic(real colvector treat)
+real colvector function simci_shuffle_basic(real colvector treat)
 {
     return(jumble(treat))
 }
 
 // Shuffle clusters, then expand using the number of individuals per cluster
-real colvector function shuffle_cluster(transmorphic T)
+real colvector function simci_shuffle_cluster(transmorphic T)
 {
-    return(expand_rows(jumble(asarray(T, "1")), asarray(T, "2")))
+    return(simci_expand_rows(jumble(asarray(T, "1")), asarray(T, "2")))
 }
 
 // Shuffle each strata and stack
-real colvector function shuffle_strata(transmorphic T)
+real colvector function simci_shuffle_strata(transmorphic T)
 {
     treat = asarray(T, "1")
     A     = asarray(T, "2")
@@ -807,7 +820,7 @@ real colvector function shuffle_strata(transmorphic T)
 }
 
 // Shuffle each strata, stack, and expand by cluster
-real colvector function shuffle_strata_cluster(transmorphic T)
+real colvector function simci_shuffle_strata_cluster(transmorphic T)
 {
     treat = asarray(T, "1")
     A     = asarray(T, "2")
@@ -816,13 +829,13 @@ real colvector function shuffle_strata_cluster(transmorphic T)
     for (i = 1; i <= rows(info); i++) {
         treat[info[i, 1]::info[i, 2]] = jumble(asarray(A, strofreal(i)))
     }
-    return(expand_rows(treat, nj))
+    return(simci_expand_rows(treat, nj))
 }
 
 // Expand rows (for cluster randomization)
 // ---------------------------------------
 
-function expand_rows(matrix X, real vector nj)
+function simci_expand_rows(matrix X, real vector nj)
 {
     real scalar i, b, e, n, add
 
@@ -830,14 +843,14 @@ function expand_rows(matrix X, real vector nj)
     _editmissing(f, 0)
     n = rows(X)
 
-    if (n != length(f)) _error(3200)
+    if ( n != length(f) ) _error(3200)
     add = sum(f)
     Y   = J(add, cols(X), missingof(X))
 
-    if (add > 0) {
+    if ( add > 0 ) {
         b = 1
         for (i = 1; i <= n; i++) {
-            if (f[i] < 1) continue
+            if ( f[i] < 1 ) continue
             e = b + f[i] - 1
             Y[|b, 1 \ e, .|] = X[J(f[i], 1, i), .]
             b = b + f[i]
@@ -849,20 +862,20 @@ function expand_rows(matrix X, real vector nj)
 // Search for power
 // ----------------
 
-real rowvector function power_search(string scalar depvar,
-                                     string scalar controls,
-                                     string scalar touse,
-                                     transmorphic treat,
-                                     real scalar reps,
-                                     real scalar nt,
-                                     real scalar effect,
-                                     pointer(real colvector function) shuffle,
-                                     real scalar alpha,
-                                     real scalar kappa,
-                                     string scalar direction,
-                                     real scalar tol,
-                                     real scalar startat,
-                                     pointer(real matrix function) effectfun)
+real rowvector function simci_power_search(string scalar depvar,
+                                           string scalar controls,
+                                           string scalar touse,
+                                           transmorphic treat,
+                                           real scalar reps,
+                                           real scalar nt,
+                                           real scalar effect,
+                                           pointer(real colvector function) shuffle,
+                                           real scalar alpha,
+                                           real scalar kappa,
+                                           string scalar direction,
+                                           real scalar tol,
+                                           real scalar startat,
+                                           pointer(real matrix function) effectfun)
 {
     // Baseline CI
     // -----------
@@ -870,8 +883,8 @@ real rowvector function power_search(string scalar depvar,
     // We'll search for the power of this test (i.e. the rejection
     // criterion is the CI from the simulation)
     res = simci(depvar, controls, touse, treat, reps, effect, shuffle)
-    ci  = pctile(res[, 1], (alpha / 2, 1 - alpha / 2))
-    if (direction == "neg") {
+    ci  = simci_pctile(res[, 1], (alpha / 2, 1 - alpha / 2))
+    if ( direction == "neg" ) {
         sign  = -1
         bound = ci[1]
     }
@@ -879,7 +892,7 @@ real rowvector function power_search(string scalar depvar,
         sign  = 1
         bound = ci[2]
     }
-    parse_simci(res, alpha, nt)
+    simci_parse_simci(res, alpha, nt)
 
     // Search for power
     // ----------------
@@ -910,7 +923,7 @@ real rowvector function power_search(string scalar depvar,
     print_ciu   = strofreal(ci[2], "%9.4f")
     print_ci    = "\nCI(" + print_alpha + ") = "
     print_ci    = print_ci + "(" + print_cil + ", " + print_ciu + ")"
-    if (sign == -1) {
+    if ( sign == -1 ) {
         printf(print_ci + "; power = mean(betas < " + print_bound + ")\n")
     }
     else {
@@ -920,7 +933,7 @@ real rowvector function power_search(string scalar depvar,
     // Will report on each iteration
     while (!stop) {
         ++iter
-        if (printh & !printed) {
+        if ( printh & !printed ) {
             printf("Iteration     Lower (power)       Upper (power)   Candidate (power)\n")
             printed = 1
         }
@@ -933,7 +946,7 @@ real rowvector function power_search(string scalar depvar,
         ntrunc = sum(status)
 
         // Get the correct power estimate, based on the direction of the effect
-        if (sign == -1) {
+        if ( sign == -1 ) {
             power = mean(coefs :< bound)
         }
         else {
@@ -941,9 +954,9 @@ real rowvector function power_search(string scalar depvar,
         }
 
         // Update estimated power
-        if (abs(power - kappa) < tol) {
+        if ( abs(power - kappa) < tol ) {
             // Report on each iteration, once we have our bounds
-            if (!missing(upper_val) & !missing(lower_val)) {
+            if ( !missing(upper_val) & !missing(lower_val) ) {
                 printf("%9.0f %9.4f (%6.4f)  %9.4f (%6.4f)  %9.4f (%6.4f)\n",
                        iter,
                        lower_val,
@@ -960,13 +973,13 @@ real rowvector function power_search(string scalar depvar,
             sim_mde  = effect
             sim_pow  = power
         }
-        else if (power > kappa) {
+        else if ( power > kappa ) {
             // If larger than power, check if it's an improvement
             power_diff = power - kappa
             // printf("%9.4f < %9.4f\n", power_diff, upper_diff)
-            if (missing(upper_val) | (power_diff < upper_diff)) {
+            if ( missing(upper_val) | (power_diff < upper_diff) ) {
                 // Report on each iteration, once we have our bounds
-                if (!missing(upper_val) & !missing(lower_val)) {
+                if ( !missing(upper_val) & !missing(lower_val) ) {
                     printf("%9.0f %9.4f (%6.4f)  %9.4f (%6.4f)  %9.4f (%6.4f)\n",
                            iter,
                            lower_val,
@@ -981,7 +994,7 @@ real rowvector function power_search(string scalar depvar,
                 upper_val  = effect
                 upper_diff = power_diff
                 upper_pow  = power
-                if (missing(lower_val)) {
+                if ( missing(lower_val) ) {
                     effect = (effect + bound) / 2
                 }
                 else {
@@ -998,13 +1011,13 @@ real rowvector function power_search(string scalar depvar,
                            (upper_diff >= lower_diff) * lower_pow
             }
         }
-        else if (power < kappa) {
+        else if ( power < kappa ) {
             // If smaller than power, check if it's an improvement
             power_diff = kappa - power
             // printf("%9.4f < %9.4f\n", power_diff, lower_diff)
-            if (missing(lower_val) | (power_diff < lower_diff)) {
+            if ( missing(lower_val) | (power_diff < lower_diff) ) {
                 // Report on each iteration, once we have our bounds
-                if (!missing(upper_val) & !missing(lower_val)) {
+                if ( !missing(upper_val) & !missing(lower_val) ) {
                     printf("%9.0f %9.4f (%6.4f)  %9.4f (%6.4f)  %9.4f (%6.4f)\n",
                            iter,
                            lower_val,
@@ -1020,16 +1033,16 @@ real rowvector function power_search(string scalar depvar,
                 lower_diff = power_diff
                 lower_pow  = power
 
-                if (missing(upper_val) & (ntrunc == 0)) {
+                if ( missing(upper_val) & (ntrunc == 0) ) {
                     // If no upper bound, search for one unless the current
                     // lower bound was an upper bound in disguise.
                     effect = effect * factor
                 }
-                else if (!missing(upper_val)) {
+                else if ( !missing(upper_val) ) {
                     // If there is an upper bound, continue
                     effect = (upper_val + lower_val) / 2
                 }
-                else if (ntrunc > 0) {
+                else if ( ntrunc > 0 ) {
                     // If no upper bound and this was an upper bound in
                     // disguise, then you can't reach the requisite power
                     // level. End program with a warning.
@@ -1040,7 +1053,6 @@ real rowvector function power_search(string scalar depvar,
                     addprint   = "\nWARNING: MDE was truncated " + ntrunc_str +
                                  "\nWARNING: Simulated MDE and power are" +
                                  " upper bounds; stopped"
-                    addprint   = sprintf(addprint, ntrunc)
                 }
             }
             else {
@@ -1077,7 +1089,7 @@ real rowvector function power_search(string scalar depvar,
 // Misc aux functions
 // ------------------
 
-real colvector function pctile(real vector x, real vector pctiles)
+real colvector function simci_pctile(real vector x, real vector pctiles)
 {
     _sort(x, 1)
     quantiles = J(length(pctiles), 1, missingof(pctiles))
@@ -1085,13 +1097,13 @@ real colvector function pctile(real vector x, real vector pctiles)
     qq  = (1::len) / len
     for (j = 1; j <= length(pctiles); j++) {
         i = sum(qq :< pctiles[j]) + 1
-        if (qq[i] == pctiles[j]) quantiles[j] = mean(x[i::(i + 1)])
+        if ( qq[i] == pctiles[j] ) quantiles[j] = mean(x[i::(i + 1)])
         else  quantiles[j] = x[i]
     }
     return(quantiles)
 }
 
-real scalar bc_var(real vector x)
+real scalar simci_var(real vector x)
 {
     n   = length(x)
     mux = mean(x)
@@ -1102,16 +1114,16 @@ real scalar bc_var(real vector x)
 // Parse output from simulations
 // -----------------------------
 
-void function parse_simci(real matrix results,
-                          real scalar alpha,
-                          real scalar nt,
-                          | real scalar lower,
-                            real scalar upper)
+void function simci_parse_simci(real matrix results,
+                                real scalar alpha,
+                                real scalar nt,
+                                | real scalar lower,
+                                  real scalar upper)
 {
     // Check there were no problems (should only matter for binary outcomes)
     status = results[, 3]
     ntrunc = sum(status)
-    if (ntrunc > 0) {
+    if ( ntrunc > 0 ) {
         addprint = "\nWARNING: MDE was truncated %9.0fc times." +
                    "\nWARNING: Simulated effect and power are upper bounds."
         printf(addprint, ntrunc)
@@ -1119,74 +1131,77 @@ void function parse_simci(real matrix results,
 
     // Parse results
     coefs = results[, 1]
-    ci = pctile(coefs, (alpha / 2, 1 - alpha / 2))
+    ci = simci_pctile(coefs, (alpha / 2, 1 - alpha / 2))
     l  = ci[1]
     u  = ci[2]
 
-    mres = mean(results)
-    sdmu = sqrt(variance(colshape(results[, 2], 1)))
-    b    = mres[1]
-    mu   = mres[2]
-    sd   = sqrt(bc_var(coefs))
-    lpct = l / mu
-    upct = u / mu
+    mres  = mean(results)
+    sd_mu = sqrt(variance(colshape(results[, 2], 1)))
+    b     = mres[1]
+    mu    = mres[2]
+    sd_b  = sqrt(simci_var(coefs))
+    lpct  = l / mu
+    upct  = u / mu
 
     // Set Stata's return values
-    st_numscalar("r(nt)",    nt)
-    st_numscalar("r(mu)",    mu)
-    st_numscalar("r(mu_sd)", sdmu)
-    st_numscalar("r(b)",     b)
-    st_numscalar("r(sd)",    sd)
+    st_numscalar("r_nt",    nt)
+    st_numscalar("r_mu",    mu)
+    st_numscalar("r_mu_sd", sd_mu)
+    st_numscalar("r_b",     b)
+    st_numscalar("r_b_sd",  sd_b)
 
-    st_numscalar("r(lower)",     l)
-    st_numscalar("r(lower_pct)", lpct)
-    st_numscalar("r(upper)",     u)
-    st_numscalar("r(upper_pct)", upct)
+    st_numscalar("r_lower",     l)
+    st_numscalar("r_lower_pct", lpct)
+    st_numscalar("r_upper",     u)
+    st_numscalar("r_upper_pct", upct)
 
-    stata("return scalar nt    = r(nt)")
-    stata("return scalar mu    = r(mu)")
-    stata("return scalar mu_sd = r(mu_sd)")
-    stata("return scalar b     = r(b)")
-    stata("return scalar sd    = r(sd)")
+    stata("return scalar nt    = r_nt")
+    stata("return scalar mu    = r_mu")
+    stata("return scalar mu_sd = r_mu_sd")
+    stata("return scalar b     = r_b")
+    stata("return scalar b_sd  = r_b_sd")
 
-    stata("return scalar lower     = r(lower)")
-    stata("return scalar lower_pct = r(lower_pct)")
-    stata("return scalar upper     = r(upper)")
-    stata("return scalar upper_pct = r(upper_pct)")
+    stata("return scalar lower     = r_lower")
+    stata("return scalar lower_pct = r_lower_pct")
+    stata("return scalar upper     = r_upper")
+    stata("return scalar upper_pct = r_upper_pct")
 
     // If asked for bounds check
-    simci = (nt, mu, b, sd, l, lpct, u, upct)
-    if (args() > 3) {
+    simci = (nt, mu, b, sd_b, l, lpct, u, upct)
+    if ( args() > 3 ) {
         power = mean(!((coefs :< upper) :* (coefs :> lower)))
-        st_numscalar("r(power)", power)
+        st_numscalar("r_power", power)
         stata(sprintf("return scalar power = %15.9f", power))
         simci = simci, power
+    }
+    else {
+        st_numscalar("r_power", .)
     }
     st_matrix("simci", simci)
     stata("return matrix simci = simci")
 }
 
-void function parse_power(real rowvector results,
-                          real scalar nt,
-                          real scalar tol)
+void function simci_parse_power(real rowvector results,
+                                real scalar nt,
+                                real scalar tol)
 {
-    st_numscalar("r(nt)", nt)
-    st_numscalar("r(mde)", results[1])
-    st_numscalar("r(power)", results[2])
-    st_numscalar("r(power_diff)", results[3])
+    st_numscalar("r_nt", nt)
+    st_numscalar("r_mde", results[1])
+    st_numscalar("r_power", results[2])
+    st_numscalar("r_power_diff", results[3])
 
-    stata("return scalar nt    = r(nt)")
-    stata("return scalar mde   = r(mde)")
-    stata("return scalar power = r(power)")
-    stata("return scalar power_diff = r(power_diff)")
+    stata("return scalar nt    = r_nt")
+    stata("return scalar mde   = r_mde")
+    stata("return scalar power = r_power")
+    stata("return scalar power_diff = r_power_diff")
 
     stopped = st_local("power_diffstr")
-    if (abs(results[3]) < tol) {
+    if ( abs(results[3]) < tol ) {
         stopped = stopped + " < " + strofreal(tol, "%9.4f")
     }
     else {
         stopped = stopped + "; no further improvements after "
-        stopped = stopped + strofreal(st_numscalar("r(iter)"), "%9.0f") + " iterations."
+        stopped = stopped + strofreal(st_numscalar("r_iter"), "%9.0f") + " iterations."
         st_local("increase", "Consider increasing the # of repetitions!")
     }
     st_local("stopped", stopped)
