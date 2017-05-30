@@ -8,7 +8,11 @@ I write the notes mainly to explain to myself how to write `power_reg` and `simc
 Requirements
 ------------
 
-I only have access to Stata 13.1, so I impose that to be the minimum. The command is really simple, however, so I would not be surprised if it worked with earlier versions. The exception would be the `fast` option, which was compiled using C and v2.0 of the Stata Plugin Interface (SPI). This might be tied to Stata 13.1. See how to recompile below.
+I only have access to Stata 13.1, so I impose that to be the minimum.
+The command is really simple, however, so I would not be surprised if it
+worked with earlier versions. The exception would be the `fast` option,
+which was compiled using C and v2.0 of the Stata Plugin Interface (SPI).
+This might be tied to Stata 13.1. See how to recompile below.
 
 Installation
 ------------
@@ -84,13 +88,19 @@ benchmark, disp reps(10): qui simci `depvar' `controls', reps(1000)
 benchmark, disp reps(10): qui simci `depvar' `controls', reps(1000) fast
 ```
 
-Note that the `fast` option depends on the [GNU Scientific Library (GSL)](https://www.gnu.org/software/gsl). If your system's `libgsl*.so` and `libgslcblas*.so` files are not in `/usr/lib`, you should point to them _**before**_ starting Stata by setting `LD_LIBRARY_PATH`. I regularly `ssh` into a RedHat server, and the files were in `/usr/local/lib`, so I ran
+Note that the `fast` option depends on the [GNU Scientific Library
+(GSL)](https://www.gnu.org/software/gsl). If your system's `libgsl*.so`
+and `libgslcblas*.so` files are not in `/usr/lib`, you should point
+to them _**before**_ starting Stata by setting `LD_LIBRARY_PATH`.
+I regularly `ssh` into a RedHat server, and the files were in
+`/usr/local/lib`, so I ran
 ```bash
 LD_LIBRARY_PATH=/usr/local/lib
 export LD_LIBRARY_PATH
 ```
 
-before starting Stata. You can add those lines to `~/.bashrc` to avoid having to do that every time you log into a session.
+before starting Stata. You can add those lines to `~/.bashrc` to avoid
+having to do that every time you log into a session.
 
 Compiling
 ---------
@@ -106,9 +116,14 @@ make SPI=2.0 # SPI v2.0, Stata 13 and earlier
 The advantage is twofold
 
 1. First, C runs much faster than mata, which is how the function is implemented.
-2. Second, C allows parallel loop execution. Since the simulation computes regression coefficients `reps` times, using N threads should result in an approximately Nx speed improvement. This works even with Stata/IC.
+2. Second, C allows parallel loop execution. Since the simulation
+   computes regression coefficients `reps` times, using N threads
+   should result in an approximately Nx speed improvement. This works
+   even with Stata/IC.
 
-Note Mata runs faster than Stata's reg **only because** this simulation uses just the regression coefficients; reg computes a lot of additional elements that the program does not use.
+Note Mata runs faster than Stata's reg largely because this simulation
+uses just the regression coefficients; reg computes a lot of additional
+elements that the program does not use.
 
 Dependencies
 ------------

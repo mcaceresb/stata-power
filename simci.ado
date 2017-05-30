@@ -1,6 +1,49 @@
-*! version 0.6.4 14Feb2017 Mauricio Caceres, caceres@nber.org
-*! Simulated CI, MDE, and power for regression specification (accepts
-*! clusters and arbitrary number of stratifying/blocking variables)
+*! version 0.6.4 14Feb2017 Mauricio Caceres Bravo, caceres@nber.org
+*! Simulated CI, MDE, and power for OLS (accepts clusters and arbitrary
+*! number of stratifying/blocking variables)
+
+* Examples
+* --------
+
+* sysuse auto, clear
+* tempfile auto
+* save `auto'
+* qui forvalues i = 1 / 20 {
+*     append using `auto'
+* }
+* replace price = price + runiform()
+*
+* local depvar      price
+* local controls    mpg rep78
+* local cluster     rep78
+* local stratum     gear_ratio
+* local categorical foreign
+
+* Simulate a CI
+* -------------
+
+* simci `depvar' `controls', reps(1000)
+* simci `depvar' `controls', reps(1000) cluster(`cluster')
+* simci `depvar' `controls' `stratum', reps(1000) cluster(`cluster') strata(`stratum') nstrata(2)
+* simci `depvar' `controls' i.`categorical', reps(1000) strata(`categorical') nstrata(0)
+
+* Simulate MDE given power
+* ------------------------
+
+* simci foreign  `controls', reps(1000) power(kappa(0.8) direction(neg) binary)
+* simci foreign  `controls', reps(1000) cluster(`cluster') power(kappa(0.8) direction(neg) binary)
+* simci foreign  `controls' `stratum', reps(1000) strata(`stratum') nstrata(2) power(binary dir(pos))
+* simci `depvar' `controls', reps(1000) cluster(`cluster') strata(`stratum') nstrata(2) power(dir(pos))
+* simci `depvar' `controls', reps(1000) strata(`stratum') nstrata(2) power(dir(pos))
+
+* Simulate power given MDE
+* ------------------------
+
+* simci foreign  `controls', reps(1000) effect(effect(-0.05) binary)
+* simci foreign  `controls', reps(1000) effect(effect(-0.05) bounds(-0.035 0.035) binary)
+* simci foreign  `controls', reps(1000) effect(effect(-0.05) bounds(auto) binary)
+* simci `depvar' `controls', reps(1000) cluster(`cluster') effect(effect(-950) bounds(auto))
+* simci `depvar' `controls', reps(1000) strata(`stratum') nstrata(2) effect(effect(367) bounds(auto))
 
 * For debugging
 * -------------
@@ -11,29 +54,28 @@ capture mata: mata drop simci()
 capture mata: mata drop simci_continuous()
 capture mata: mata drop simci_binary()
 
-capture mata: mata drop power_search()
-capture mata: mata drop parse_simci()
-capture mata: mata drop parse_power()
+capture mata: mata drop simci_power_search()
+capture mata: mata drop simci_parse_simci()
+capture mata: mata drop simci_parse_power()
 
 capture mata: mata drop simci_setup_basic()
 capture mata: mata drop simci_setup_strata()
 capture mata: mata drop simci_setup_cluster()
 capture mata: mata drop simci_panel_info()
 
-capture mata: mata drop shuffle_basic()
-capture mata: mata drop shuffle_strata()
-capture mata: mata drop shuffle_cluster()
-capture mata: mata drop shuffle_strata_cluster()
+capture mata: mata drop simci_shuffle_basic()
+capture mata: mata drop simci_shuffle_strata()
+capture mata: mata drop simci_shuffle_cluster()
+capture mata: mata drop simci_shuffle_strata_cluster()
 
-capture mata: mata drop expand_rows()
-capture mata: mata drop pctile()
-capture mata: mata drop bc_var()
+capture mata: mata drop simci_expand_rows()
+capture mata: mata drop simci_pctile()
+capture mata: mata drop simci_var()
 
 ***********************************************************************
 *                            Main Program                             *
 ***********************************************************************
 
-* TODO: "autostratify"? // 2016-09-23 14:43 EDT
 program simci, rclass sortpreserve
 	syntax varlist(numeric ts fv) /// dependent_var covariates
            [if] [in] ,            /// subset
@@ -51,15 +93,13 @@ program simci, rclass sortpreserve
                                   ///   the variable's categories.
         effect(str)               /// Induce artificial effect
         power(str)                /// Search for power
-                                  ///
-        fast                      /// Use C plugin for speed
 	]
     local savelist `varlist'
 
     * Figure out what the function will output
 	if ("`effect'" != "") & ("`power'" != "") {
 		di as err "{p}options effect and power are mutually exclusive{p_end}"
-		exit
+		exit 198
 	}
     else if ("`effect'" != "") & ("`power'"  == "") local compute effect
     else if ("`effect'" == "") & ("`power'"  != "") local compute power
@@ -199,13 +239,7 @@ program simci, rclass sortpreserve
         qui ds `strata'
         local strata `r(varlist)'
 
-        * if !`:list strata in controls' {
-        *     di as err "{p}stratifying variable '`strata''" ///
-        *               " must all be in the controls{p_end}"
-        *     exit 198
-        * }
-
-        if `:list sizeof strata' != `:list sizeof nstrata' {
+        if (`:list sizeof strata' != `:list sizeof nstrata') {
             di as err "{p}specify # of strata for each stratifying variable{p_end}"
             exit 198
         }
@@ -234,18 +268,6 @@ program simci, rclass sortpreserve
     }
     else local st = 1
 
-    * 'fast' only works for the simple case at the moment
-    local complicated = ("`strata'" != "") | ("`cluster'" != "")
-    if ("`fast'" != "") & `complicated' {
-        di as err "'fast' not yet available with stratification or clustering."
-        exit 198
-    }
-
-    if ("`fast'" != "") & ("`compute'" != "ci") {
-        di as err "'fast' not yet available with -effect()- or -power()-."
-        exit 198
-    }
-
     * Set up randomization for Mata
     * -----------------------------
 
@@ -262,7 +284,8 @@ program simci, rclass sortpreserve
     tempname shufflefun atreat nt
     if ("`cluster'" != "") {
         tempvar clusorder
-        qui if regexm("`:type `cluster''", "str") {
+        cap confirm numeric variable `cluster'
+        if (_rc != 0) {
             encode `cluster' if `touse', gen(`clusorder')
         }
         else local clusorder `cluster'
@@ -276,7 +299,7 @@ program simci, rclass sortpreserve
                                                  st_local("touse"), `ptreat')
             mata: st_local("nclus", strofreal(rows(asarray(`atreat', "2"))))
             mata: `nt' = asarray(`atreat', "0")
-            mata: `shufflefun' = &shuffle_cluster()
+            mata: `shufflefun' = &simci_shuffle_cluster()
         }
         else {
             * Stratified cluster-level randomization: We shuffle prod(`nstrata')
@@ -341,7 +364,7 @@ program simci, rclass sortpreserve
             qui merge m:1 `clusorder' using `stratafile'
             qui assert (_merge == 3) | `notouse'
             drop _merge
-            mata: `shufflefun' = &shuffle_strata_cluster()
+            mata: `shufflefun' = &simci_shuffle_strata_cluster()
         }
     }
     else {
@@ -356,7 +379,7 @@ program simci, rclass sortpreserve
             mata: `atreat' = simci_setup_basic(st_numscalar("ntreat"), ///
                                                st_numscalar("ncontrol"))
             mata: `nt' = st_numscalar("ntreat")
-            mata: `shufflefun' = &shuffle_basic()
+            mata: `shufflefun' = &simci_shuffle_basic()
         }
         else {
             * Stratified individual-level randomization: We shuffle prod(`nstrata')
@@ -392,7 +415,7 @@ program simci, rclass sortpreserve
                                                 st_local("touse"),  ///
                                                 0, `ptreat', `st')
             mata: `nt' = asarray(`atreat', "0")
-            mata: `shufflefun' = &shuffle_strata()
+            mata: `shufflefun' = &simci_shuffle_strata()
         }
     }
 
@@ -406,22 +429,7 @@ program simci, rclass sortpreserve
     else if ("`binary'" != "") local binary _binary
 
     tempname results output
-    if ("`fast'" != "") {
-        * Run using C plug-in; fastest
-        tempfile f
-        tempname beta mu
-        preserve
-            qui keep if `touse'
-            keep  `depvar' `controls'
-            order `depvar' `controls'
-            plugin call psimci `depvar' `controls', `ptreat' `reps' "`f'"
-            mata: `results' = strtoreal((cat("`f'b"), cat("`f'mu"))), J(`reps', 1, 0)
-            mata: `output'  = parse_simci(`results', `alpha', `nt')
-            mata: unlink("`f'b")
-            mata: unlink("`f'mu")
-        restore
-    }
-    else if ("`compute'" == "ci") | ("`compute'" == "effect") {
+    if ("`compute'" == "ci") | ("`compute'" == "effect") {
         * Run the CI simulation using Stata
         mata: `results' = simci`binary'(st_local("depvar"),   /// depvar
                                         st_local("controls"), /// controls
@@ -433,7 +441,7 @@ program simci, rclass sortpreserve
 
         * Find power given bounds if effect requested (auto or provided)
         if ("`bounds'" == "") {
-            mata: `output' = parse_simci(`results', `alpha', `nt')
+            mata: `output' = simci_parse_simci(`results', `alpha', `nt')
         }
         else if ("`bounds'" == "auto") {
             tempname resb cib
@@ -444,35 +452,38 @@ program simci, rclass sortpreserve
                                  `reps',               /// reps
                                  0,                    /// effectret
                                  `shufflefun')         //  shuffle
-            mata: `cib' = pctile(`resb'[, 1], (`alpha' / 2, 1 - `alpha' / 2))
-            mata: `output' = parse_simci(`results', `alpha', `nt', `cib'[1], `cib'[2])
+            mata: `cib' = simci_pctile(`resb'[, 1], (`alpha' / 2, 1 - `alpha' / 2))
+            mata: `output' = simci_parse_simci(`results', `alpha', `nt', `cib'[1], `cib'[2])
             mata: mata drop `cib' `resb'
         }
         else {
             gettoken lower upper: bounds
-            mata: `output' = parse_simci(`results', `alpha', `nt', `lower', `upper')
+            mata: `output' = simci_parse_simci(`results', `alpha', `nt', `lower', `upper')
         }
     }
     else if ("`compute'" == "power") {
         * Find MDE given power level
-        mata: `results' = power_search(st_local("depvar"),    /// depvar
-                                       st_local("controls"),  /// controls
-                                       st_local("touse"),     /// touse
-                                       `atreat',              /// treat
-                                       `reps',                /// reps
-                                       `nt',                  /// nt
-                                       0,                     /// effect
-                                       `shufflefun',          /// shuffle
-                                       `alpha',               /// alpha
-                                       `kappa',               /// kappa
-                                       "`direction'",         /// direction
-                                       `tol',                 /// tol
-                                       `startat',             /// startat
-                                       &simci`binary'())      //  effectfun
-            mata: `output' = parse_power(`results', `nt', `tol')
+        mata: `results' = simci_power_search(st_local("depvar"),    /// depvar
+                                             st_local("controls"),  /// controls
+                                             st_local("touse"),     /// touse
+                                             `atreat',              /// treat
+                                             `reps',                /// reps
+                                             `nt',                  /// nt
+                                             0,                     /// effect
+                                             `shufflefun',          /// shuffle
+                                             `alpha',               /// alpha
+                                             `kappa',               /// kappa
+                                             "`direction'",         /// direction
+                                             `tol',                 /// tol
+                                             `startat',             /// startat
+                                             &simci`binary'())      //  effectfun
+            mata: `output' = simci_parse_power(`results', `nt', `tol')
     }
-    mata: mata drop `atreat' `nt' `results' `shufflefun'
-    qui count if `todo'
+    mata: mata drop `atreat'
+    mata: mata drop `nt'
+    mata: mata drop `results'
+    mata: mata drop `shufflefun'
+    qui count if `touse'
     return scalar N = `r(N)'
 
     * Pretty printing
@@ -483,10 +494,10 @@ program simci, rclass sortpreserve
         local eq   "Y = a + b T + X + e"
         local null "Ho: b = `effect' versus Ha: b != `effect'""
 
-        local trimci     = "(`:di trim("`:di %9.4f `r(lower)''")'"
-        local trimci     = "`trimci', `:di trim("`:di %9.4f `r(upper)''")')"
-        local trimci_pct = "(`:di trim("`:di %9.4f `r(lower_pct)''")'"
-        local trimci_pct = "`trimci_pct', `:di trim("`:di %9.4f `r(upper_pct)''")')"
+        local trimci     = "(`:di trim("`:di %9.4f scalar(r_lower)'")'"
+        local trimci     = "`trimci', `:di trim("`:di %9.4f scalar(r_upper)'")')"
+        local trimci_pct = "(`:di trim("`:di %9.4f scalar(r_lower_pct)'")'"
+        local trimci_pct = "`trimci_pct', `:di trim("`:di %9.4f scalar(r_upper_pct)'")')"
 
         di ""
         di "`pow': `eq'"
@@ -495,20 +506,20 @@ program simci, rclass sortpreserve
         di "Study parameters:"
         di "    alpha = `:di %9.4f `alpha''"
         di "        P = `:di %9.4f `ptreat''"
-        di "       PN = `:di %9.0gc `r(nt)''"
+        di "       PN = `:di %9.0gc scalar(r_nt)'"
         di ""
         di "Simulated results:"
-        di "       m1 = `:di %9.4f `r(mu)''"
-        di "        b = `:di %9.4f `r(b)''"
-        di "     sd_b = `:di %9.4f `r(sd)''"
+        di "       m1 = `:di %9.4f scalar(r_mu)'"
+        di "        b = `:di %9.4f scalar(r_b)'"
+        di "     sd_b = `:di %9.4f scalar(r_b_sd)'"
         di "       ci = `trimci'"
         di "  ci / m1 = `trimci_pct'"
-        if ("`r(power)'" != "") {
+        if (scalar(r_power) != .) {
             di ""
             di "Simulated power for b = `effect':"
-            di "    power = `:di %9.4f `r(power)''"
-            di "    lower = `:di %9.4f `r(lower)''"
-            di "    upper = `:di %9.4f `r(upper)''"
+            di "    power = `:di %9.4f scalar(r_power)'"
+            di "    lower = `:di %9.4f scalar(r_lower)'"
+            di "    upper = `:di %9.4f scalar(r_upper)'"
         }
     }
     else {
@@ -520,24 +531,21 @@ program simci, rclass sortpreserve
         di "        P = `:di %9.4f `ptreat''"
         if ("`cluster'" != "") di "     clus = `:di %9.0gc `nclus''"
         else di "      obs = `:di %9.0gc `N''"
-        di "  treated = `:di %9.0gc `r(nt)''"
+        di "  treated = `:di %9.0gc scalar(r_nt)'"
         di "    kappa = `:di %9.4f `kappa''"
         di "      tol = `:di %9.4f `tol''"
         di ""
         di "Simulated results:"
-        di "       m1 = `:di %9.4f `r(mu)''"
-        di "      MDE = `:di %9.4f `r(mde)''"
-        di "    power = `:di %9.4f `r(power)''"
-        di " MDE / m1 = `:di %9.4f `r(mde)' / `r(mu)''"
+        di "       m1 = `:di %9.4f scalar(r_mu)'"
+        di "      MDE = `:di %9.4f scalar(r_mde)'"
+        di "    power = `:di %9.4f scalar(r_power)'"
+        di " MDE / m1 = `:di %9.4f scalar(r_mde) / scalar(r_mu)'"
         di ""
         di "`stopped'"
         if ("`increase'" != "") di "`increase'"
     }
     di ""
 end
-
-capture program drop psimci
-capture program psimci, plugin using("psimci.plugin")
 
 ***********************************************************************
 *                           Mata functions                            *
@@ -568,10 +576,6 @@ capture program psimci, plugin using("psimci.plugin")
 //     speed improvements from the prior step are marginal, the loop in
 //     pure Mata does run faster than the Stata loop doing Mata matrix
 //     algebra at each turn.
-//
-//   - Randomization, regression, and loop in C: Fastest. MATA cannot
-//     compete with C, which is is a compiled language and can also
-//     execute the loop in parallel
 
 mata:
 
@@ -783,19 +787,19 @@ void function simci_panel_info(real scalar N,
 // --------------------------------------------------------------------
 
 // Just shuffle the treatment vector
-real colvector function shuffle_basic(real colvector treat)
+real colvector function simci_shuffle_basic(real colvector treat)
 {
     return(jumble(treat))
 }
 
 // Shuffle clusters, then expand using the number of individuals per cluster
-real colvector function shuffle_cluster(transmorphic T)
+real colvector function simci_shuffle_cluster(transmorphic T)
 {
-    return(expand_rows(jumble(asarray(T, "1")), asarray(T, "2")))
+    return(simci_expand_rows(jumble(asarray(T, "1")), asarray(T, "2")))
 }
 
 // Shuffle each strata and stack
-real colvector function shuffle_strata(transmorphic T)
+real colvector function simci_shuffle_strata(transmorphic T)
 {
     treat = asarray(T, "1")
     A     = asarray(T, "2")
@@ -807,7 +811,7 @@ real colvector function shuffle_strata(transmorphic T)
 }
 
 // Shuffle each strata, stack, and expand by cluster
-real colvector function shuffle_strata_cluster(transmorphic T)
+real colvector function simci_shuffle_strata_cluster(transmorphic T)
 {
     treat = asarray(T, "1")
     A     = asarray(T, "2")
@@ -816,13 +820,13 @@ real colvector function shuffle_strata_cluster(transmorphic T)
     for (i = 1; i <= rows(info); i++) {
         treat[info[i, 1]::info[i, 2]] = jumble(asarray(A, strofreal(i)))
     }
-    return(expand_rows(treat, nj))
+    return(simci_expand_rows(treat, nj))
 }
 
 // Expand rows (for cluster randomization)
 // ---------------------------------------
 
-function expand_rows(matrix X, real vector nj)
+function simci_expand_rows(matrix X, real vector nj)
 {
     real scalar i, b, e, n, add
 
@@ -849,20 +853,20 @@ function expand_rows(matrix X, real vector nj)
 // Search for power
 // ----------------
 
-real rowvector function power_search(string scalar depvar,
-                                     string scalar controls,
-                                     string scalar touse,
-                                     transmorphic treat,
-                                     real scalar reps,
-                                     real scalar nt,
-                                     real scalar effect,
-                                     pointer(real colvector function) shuffle,
-                                     real scalar alpha,
-                                     real scalar kappa,
-                                     string scalar direction,
-                                     real scalar tol,
-                                     real scalar startat,
-                                     pointer(real matrix function) effectfun)
+real rowvector function simci_power_search(string scalar depvar,
+                                           string scalar controls,
+                                           string scalar touse,
+                                           transmorphic treat,
+                                           real scalar reps,
+                                           real scalar nt,
+                                           real scalar effect,
+                                           pointer(real colvector function) shuffle,
+                                           real scalar alpha,
+                                           real scalar kappa,
+                                           string scalar direction,
+                                           real scalar tol,
+                                           real scalar startat,
+                                           pointer(real matrix function) effectfun)
 {
     // Baseline CI
     // -----------
@@ -870,7 +874,7 @@ real rowvector function power_search(string scalar depvar,
     // We'll search for the power of this test (i.e. the rejection
     // criterion is the CI from the simulation)
     res = simci(depvar, controls, touse, treat, reps, effect, shuffle)
-    ci  = pctile(res[, 1], (alpha / 2, 1 - alpha / 2))
+    ci  = simci_pctile(res[, 1], (alpha / 2, 1 - alpha / 2))
     if (direction == "neg") {
         sign  = -1
         bound = ci[1]
@@ -879,7 +883,7 @@ real rowvector function power_search(string scalar depvar,
         sign  = 1
         bound = ci[2]
     }
-    parse_simci(res, alpha, nt)
+    simci_parse_simci(res, alpha, nt)
 
     // Search for power
     // ----------------
@@ -1040,7 +1044,6 @@ real rowvector function power_search(string scalar depvar,
                     addprint   = "\nWARNING: MDE was truncated " + ntrunc_str +
                                  "\nWARNING: Simulated MDE and power are" +
                                  " upper bounds; stopped"
-                    addprint   = sprintf(addprint, ntrunc)
                 }
             }
             else {
@@ -1055,7 +1058,7 @@ real rowvector function power_search(string scalar depvar,
         }
         printh = (!missing(upper_val) & !missing(lower_val))
     }
-    st_numscalar("r(iter)", iter)
+    st_numscalar("r_iter", iter)
     stata(sprintf("return scalar iter = %15.0f", iter))
 
     // Pretty printing of results
@@ -1077,7 +1080,7 @@ real rowvector function power_search(string scalar depvar,
 // Misc aux functions
 // ------------------
 
-real colvector function pctile(real vector x, real vector pctiles)
+real colvector function simci_pctile(real vector x, real vector pctiles)
 {
     _sort(x, 1)
     quantiles = J(length(pctiles), 1, missingof(pctiles))
@@ -1091,7 +1094,7 @@ real colvector function pctile(real vector x, real vector pctiles)
     return(quantiles)
 }
 
-real scalar bc_var(real vector x)
+real scalar simci_var(real vector x)
 {
     n   = length(x)
     mux = mean(x)
@@ -1102,11 +1105,11 @@ real scalar bc_var(real vector x)
 // Parse output from simulations
 // -----------------------------
 
-void function parse_simci(real matrix results,
-                          real scalar alpha,
-                          real scalar nt,
-                          | real scalar lower,
-                            real scalar upper)
+void function simci_parse_simci(real matrix results,
+                                real scalar alpha,
+                                real scalar nt,
+                                | real scalar lower,
+                                  real scalar upper)
 {
     // Check there were no problems (should only matter for binary outcomes)
     status = results[, 3]
@@ -1119,66 +1122,69 @@ void function parse_simci(real matrix results,
 
     // Parse results
     coefs = results[, 1]
-    ci = pctile(coefs, (alpha / 2, 1 - alpha / 2))
+    ci = simci_pctile(coefs, (alpha / 2, 1 - alpha / 2))
     l  = ci[1]
     u  = ci[2]
 
-    mres = mean(results)
-    sdmu = sqrt(variance(colshape(results[, 2], 1)))
-    b    = mres[1]
-    mu   = mres[2]
-    sd   = sqrt(bc_var(coefs))
-    lpct = l / mu
-    upct = u / mu
+    mres  = mean(results)
+    sd_mu = sqrt(variance(colshape(results[, 2], 1)))
+    b     = mres[1]
+    mu    = mres[2]
+    sd_b  = sqrt(simci_var(coefs))
+    lpct  = l / mu
+    upct  = u / mu
 
     // Set Stata's return values
-    st_numscalar("r(nt)",    nt)
-    st_numscalar("r(mu)",    mu)
-    st_numscalar("r(mu_sd)", sdmu)
-    st_numscalar("r(b)",     b)
-    st_numscalar("r(sd)",    sd)
+    st_numscalar("r_nt",    nt)
+    st_numscalar("r_mu",    mu)
+    st_numscalar("r_mu_sd", sd_mu)
+    st_numscalar("r_b",     b)
+    st_numscalar("r_b_sd",  sd_b)
 
-    st_numscalar("r(lower)",     l)
-    st_numscalar("r(lower_pct)", lpct)
-    st_numscalar("r(upper)",     u)
-    st_numscalar("r(upper_pct)", upct)
+    st_numscalar("r_lower",     l)
+    st_numscalar("r_lower_pct", lpct)
+    st_numscalar("r_upper",     u)
+    st_numscalar("r_upper_pct", upct)
 
-    stata("return scalar nt    = r(nt)")
-    stata("return scalar mu    = r(mu)")
-    stata("return scalar mu_sd = r(mu_sd)")
-    stata("return scalar b     = r(b)")
-    stata("return scalar sd    = r(sd)")
+    stata("return scalar nt    = r_nt")
+    stata("return scalar mu    = r_mu")
+    stata("return scalar mu_sd = r_mu_sd")
+    stata("return scalar b     = r_b")
+    stata("return scalar b_sd  = r_b_sd")
 
-    stata("return scalar lower     = r(lower)")
-    stata("return scalar lower_pct = r(lower_pct)")
-    stata("return scalar upper     = r(upper)")
-    stata("return scalar upper_pct = r(upper_pct)")
+    stata("return scalar lower     = r_lower")
+    stata("return scalar lower_pct = r_lower_pct")
+    stata("return scalar upper     = r_upper")
+    stata("return scalar upper_pct = r_upper_pct")
 
     // If asked for bounds check
-    simci = (nt, mu, b, sd, l, lpct, u, upct)
+    simci = (nt, mu, b, sd_b, l, lpct, u, upct)
     if (args() > 3) {
         power = mean(!((coefs :< upper) :* (coefs :> lower)))
-        st_numscalar("r(power)", power)
+        st_numscalar("r_power", power)
         stata(sprintf("return scalar power = %15.9f", power))
         simci = simci, power
+    }
+    else {
+        st_numscalar("r_power", .)
     }
     st_matrix("simci", simci)
     stata("return matrix simci = simci")
 }
 
-void function parse_power(real rowvector results,
-                          real scalar nt,
-                          real scalar tol)
+void function simci_parse_power(real rowvector results,
+                                real scalar nt,
+                                real scalar tol)
 {
-    st_numscalar("r(nt)", nt)
-    st_numscalar("r(mde)", results[1])
-    st_numscalar("r(power)", results[2])
-    st_numscalar("r(power_diff)", results[3])
+    st_numscalar("r_nt", nt)
+    st_numscalar("r_mde", results[1])
+    st_numscalar("r_power", results[2])
+    st_numscalar("r_power_diff", results[3])
 
-    stata("return scalar nt    = r(nt)")
-    stata("return scalar mde   = r(mde)")
-    stata("return scalar power = r(power)")
-    stata("return scalar power_diff = r(power_diff)")
+    stata("return scalar nt    = r_nt")
+    stata("return scalar mde   = r_mde")
+    stata("return scalar power = r_power")
+    stata("return scalar power_diff = r_power_diff")
 
     stopped = st_local("power_diffstr")
     if (abs(results[3]) < tol) {
@@ -1186,7 +1192,7 @@ void function parse_power(real rowvector results,
     }
     else {
         stopped = stopped + "; no further improvements after "
-        stopped = stopped + strofreal(st_numscalar("r(iter)"), "%9.0f") + " iterations."
+        stopped = stopped + strofreal(st_numscalar("r_iter"), "%9.0f") + " iterations."
         st_local("increase", "Consider increasing the # of repetitions!")
     }
     st_local("stopped", stopped)
