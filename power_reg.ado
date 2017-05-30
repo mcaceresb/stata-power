@@ -518,7 +518,7 @@ program get_mde, rclass
     local N    = `2'
     local mean = `3'
 
-    /*
+    **
      * # Formulas
      *
      * For a continuous outcome, power is given by
@@ -552,7 +552,7 @@ program get_mde, rclass
      * - Manatunga, A. K., Hudgens, M. G., and Chen, S. (2001). Sample Size
      *   Estimation in Cluster Randomized Studies with Varying Cluster
      *   Size. _Biometrical Journal_, 43(1):75–86.
-     */
+     **
 
      local t = abs(invnormal(`alpha' / 2) + invnormal(1 - `kappa'))
 
@@ -609,7 +609,7 @@ program get_sampsi, rclass
     local mt  = `2'
     local mc  = `3'
 
-    /*
+    **
      * # Formulas
      *
      * For a continuous outcome, power is given by
@@ -638,7 +638,7 @@ program get_sampsi, rclass
      * - Manatunga, A. K., Hudgens, M. G., and Chen, S. (2001). Sample Size
      *   Estimation in Cluster Randomized Studies with Varying Cluster
      *   Size. _Biometrical Journal_, 43(1):75–86.
-     */
+     **
 
      local t = invnormal(`alpha' / 2) + invnormal(1 - `kappa')
 
